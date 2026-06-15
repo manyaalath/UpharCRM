@@ -7,7 +7,7 @@ const tabs = [
   { href: '/dashboard', label: 'Home', icon: 'home' },
   { href: '/leads', label: 'Leads', icon: 'list_alt' },
   { href: '/records', label: 'Records', icon: 'folder' },
-  { href: '/data-entry', label: 'Entry', icon: 'edit_note' },
+  { href: '/notifications', label: 'Alerts', icon: 'notifications' },
 ];
 
 export default function BottomNav() {

@@ -1,18 +1,29 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
   { href: '/leads', label: 'Leads', icon: 'person_search' },
   { href: '/records', label: 'Records', icon: 'inventory' },
-  { href: '/data-entry', label: 'New Entry', icon: 'edit_note' },
   { href: '/agents', label: 'Agents', icon: 'group' },
+  { href: '/notifications', label: 'Notifications', icon: 'notifications' },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'crm' }),
+    });
+    router.push('/login');
+    router.refresh();
+  };
 
   return (
     <aside className="hidden md:flex flex-col h-screen w-[260px] py-6 bg-white border-r border-slate-200 fixed top-0 left-0 z-40 overflow-y-auto shadow-sm">
@@ -52,8 +63,8 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Settings */}
-      <div className="px-2 mt-auto">
+      {/* Bottom actions */}
+      <div className="px-2 mt-auto flex flex-col gap-1">
         <Link
           href="/settings"
           className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all text-[13px] font-semibold"
@@ -61,6 +72,13 @@ export default function Sidebar() {
           <span className="material-symbols-outlined text-[20px]">settings</span>
           Settings
         </Link>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all text-[13px] font-semibold w-full text-left"
+        >
+          <span className="material-symbols-outlined text-[20px]">logout</span>
+          Sign Out
+        </button>
       </div>
     </aside>
   );

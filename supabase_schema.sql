@@ -55,6 +55,18 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Data entry users table (for DE portal login)
+-- Accessed only via service role key (not RLS-protected)
+CREATE TABLE IF NOT EXISTS data_entry_users (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name          TEXT NOT NULL,
+  email         TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'approved', 'rejected')),
+  created_at    TIMESTAMPTZ DEFAULT now()
+);
+
 -- Auto-create lead on challan insert
 CREATE OR REPLACE FUNCTION create_lead_from_challan()
 RETURNS TRIGGER AS $$
@@ -92,11 +104,11 @@ DROP TRIGGER IF EXISTS leads_updated_at ON leads;
 CREATE TRIGGER leads_updated_at BEFORE UPDATE ON leads
 FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- Enable RLS
-ALTER TABLE challans ENABLE ROW LEVEL SECURITY;
-ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
-ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+-- Enable RLS (idempotent — safe to run multiple times)
+ALTER TABLE IF EXISTS challans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS agents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS profiles ENABLE ROW LEVEL SECURITY;
 
 -- Profiles: Users can read their own profile
 DROP POLICY IF EXISTS "Users can read own profile" ON profiles;
@@ -139,5 +151,6 @@ CREATE POLICY "super_admin_leads" ON leads
     )
   );
 
--- Insert sample agents
-INSERT INTO agents (name) VALUES ('Rahul Sharma (North)'), ('Vikas Singh (East)'), ('Amit Kumar (Central)') ON CONFLICT DO NOTHING;
+-- Insert sample agents (safe to run multiple times)
+INSERT INTO agents (name) VALUES ('Rahul Sharma (North)'), ('Vikas Singh (East)'), ('Amit Kumar (Central)')
+ON CONFLICT (name) DO NOTHING;
