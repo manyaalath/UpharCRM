@@ -1,0 +1,326 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>New Challan Entry - Uphar CRM</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@400&amp;family=Noto+Sans+Devanagari:wght@400&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            theme: {
+                extend: {
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "gutter": "16px",
+                        "lg": "24px",
+                        "sidebar-width": "260px",
+                        "xl": "40px",
+                        "md": "16px",
+                        "xs": "4px",
+                        "sm": "8px",
+                        "base": "4px"
+                    },
+                    "fontFamily": {
+                        "display-lg-mobile": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "hindi-hint": ["Noto Sans Devanagari"],
+                        "data-mono": ["JetBrains Mono"],
+                        "headline-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "display-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "display-lg-mobile": ["24px", { "lineHeight": "1.2", "fontWeight": "700" }],
+                        "label-sm": ["13px", { "lineHeight": "1", "fontWeight": "600" }],
+                        "hindi-hint": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "data-mono": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "headline-md": ["20px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "display-lg": ["32px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.filled {
+            font-variation-settings: 'FILL' 1;
+        }
+        
+        /* Custom scrollbar for light mode */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f8fafc;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        /* Form Focus Ring */
+        .uphar-input:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px #1E40AF;
+            border-color: transparent;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-body-md text-body-md min-h-screen flex flex-col md:flex-row">
+<!-- TopNavBar (Mobile Only) -->
+<header class="md:hidden flex justify-between items-center px-lg py-sm w-full bg-white border-b border-slate-200 docked full-width top-0 z-50">
+<div class="font-display-lg text-display-lg font-bold text-[#1E40AF]">उपहार प्रकाशन</div>
+<div class="flex gap-4">
+<button class="text-[#1E40AF] hover:text-[#1e3a8a] transition-colors opacity-80">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-[#1E40AF] hover:text-[#1e3a8a] transition-colors opacity-80">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</header>
+<!-- SideNavBar (Desktop Only) -->
+<nav class="hidden md:flex flex-col h-full w-[260px] py-lg bg-white docked fixed-left h-screen w-sidebar-width border-r border-slate-200 z-40 shrink-0 shadow-sm">
+<div class="px-lg mb-8">
+<h1 class="font-headline-md text-headline-md font-bold text-[#1E40AF]">Uphar CRM</h1>
+<p class="font-label-sm text-label-sm text-slate-500 mt-1">Distribution Hub</p>
+</div>
+<div class="flex flex-col gap-2 px-sm flex-grow">
+<!-- Inactive -->
+<a class="flex items-center gap-3 px-md py-sm rounded-lg text-slate-600 hover:bg-slate-100 transition-all" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-sm text-label-sm">Dashboard</span>
+</a>
+<!-- Active -->
+<a class="flex items-center gap-3 px-md py-sm rounded-lg text-[#1E40AF] border-r-2 border-[#1E40AF] font-bold scale-95 hover:bg-blue-50 transition-all bg-blue-50/50" href="#">
+<span class="material-symbols-outlined filled">person_search</span>
+<span class="font-label-sm text-label-sm">Leads</span>
+</a>
+<a class="flex items-center gap-3 px-md py-sm rounded-lg text-slate-600 hover:bg-slate-100 transition-all" href="#">
+<span class="material-symbols-outlined">inventory</span>
+<span class="font-label-sm text-label-sm">Records</span>
+</a>
+<a class="flex items-center gap-3 px-md py-sm rounded-lg text-slate-600 hover:bg-slate-100 transition-all" href="#">
+<span class="material-symbols-outlined">group</span>
+<span class="font-label-sm text-label-sm">Agents</span>
+</a>
+<a class="flex items-center gap-3 px-md py-sm rounded-lg text-slate-600 hover:bg-slate-100 transition-all mt-auto" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-sm text-label-sm">Settings</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-grow flex flex-col items-center pb-24 md:pb-8 pt-4 md:pt-8 px-4 md:ml-[260px] w-full max-w-full overflow-x-hidden">
+<!-- Center Container -->
+<div class="w-full max-w-[720px] flex flex-col gap-8">
+<!-- Sticky Top Actions -->
+<div class="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm py-4 flex justify-between items-center border-b border-slate-200 mb-4">
+<h2 class="font-headline-md text-headline-md text-slate-900">New Entry</h2>
+<div class="flex gap-3">
+<div class="relative hidden sm:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
+<input class="bg-white border border-slate-300 rounded pl-9 pr-3 py-1.5 text-sm uphar-input text-slate-900 placeholder:text-slate-400 w-48 shadow-sm" placeholder="Search entries..." type="text">
+</div>
+<button class="bg-[#FBBF24] text-slate-900 font-bold hover:bg-[#F59E0B] px-3 py-1.5 rounded flex items-center gap-1 transition-colors shadow-sm">
+<span class="material-symbols-outlined text-sm">add</span>
+<span class="font-label-sm text-label-sm">Quick Add</span>
+</button>
+</div>
+</div>
+<!-- Header & Signature Rule -->
+<div class="mb-2">
+<h1 class="font-display-lg text-display-lg text-slate-900 md:hidden">New Challan Entry</h1>
+<h1 class="font-display-lg text-display-lg text-slate-900 hidden md:block">New Challan Entry</h1>
+<hr class="h-[3px] bg-[#1E40AF] border-none mt-2 w-full rounded-full">
+</div>
+<!-- Form Card Container -->
+<div class="bg-white border border-slate-200 rounded-lg p-lg shadow-sm">
+<form class="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-8">
+<!-- Challan No -->
+<div class="flex flex-col gap-1">
+<label class="font-label-sm text-label-sm text-slate-700">Challan No.</label>
+<div class="flex items-center justify-between">
+<span class="font-data-mono text-data-mono text-[#1E40AF] font-bold">#CHL-2024-0891</span>
+<button class="text-slate-400 hover:text-[#1E40AF]" title="Regenerate" type="button">
+<span class="material-symbols-outlined text-sm">refresh</span>
+</button>
+</div>
+<div class="h-[1px] bg-slate-200 w-full mt-1"></div>
+</div>
+<!-- Date -->
+<div class="flex flex-col gap-1">
+<label class="font-label-sm text-label-sm text-slate-700 flex justify-between">
+                            Date <span class="font-hindi-hint text-hindi-hint text-slate-500">तारीख</span>
+</label>
+<input class="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 uphar-input shadow-sm" type="date" value="2024-10-24">
+</div>
+<!-- Teacher Name -->
+<div class="flex flex-col gap-1 md:col-span-2">
+<label class="font-label-sm text-label-sm text-slate-700 flex justify-between">
+                            Teacher / Contact Name <span class="font-hindi-hint text-hindi-hint text-slate-500">शिक्षक / संपर्क का नाम</span>
+</label>
+<input class="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 uphar-input shadow-sm placeholder:text-slate-400" placeholder="Enter full name" type="text">
+</div>
+<!-- Institute Name -->
+<div class="flex flex-col gap-1 md:col-span-2">
+<label class="font-label-sm text-label-sm text-slate-700 flex justify-between">
+                            Institute / School / Shop <span class="font-hindi-hint text-hindi-hint text-slate-500">संस्थान / स्कूल / दुकान</span>
+</label>
+<input class="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 uphar-input shadow-sm placeholder:text-slate-400" placeholder="Enter institution name" type="text">
+</div>
+<!-- Address -->
+<div class="flex flex-col gap-1 md:col-span-2">
+<label class="font-label-sm text-label-sm text-slate-700 flex justify-between">
+                            Address <span class="font-hindi-hint text-hindi-hint text-slate-500">पता</span>
+</label>
+<textarea class="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 uphar-input shadow-sm placeholder:text-slate-400 resize-none" placeholder="Street address, block, etc." rows="2"></textarea>
+</div>
+<!-- District Dropdown -->
+<div class="flex flex-col gap-1">
+<label class="font-label-sm text-label-sm text-slate-700 flex justify-between">
+                            District <span class="font-hindi-hint text-hindi-hint text-slate-500">ज़िला</span>
+</label>
+<select class="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 uphar-input shadow-sm">
+<option value="">Select District</option>
+<option value="agra">Agra</option>
+<option value="aligarh">Aligarh</option>
+<option value="allahabad">Prayagraj</option>
+<option value="kanpur">Kanpur</option>
+<option value="lucknow">Lucknow</option>
+<option value="meerut">Meerut</option>
+<option value="varanasi">Varanasi</option>
+</select>
+</div>
+<!-- Pincode & Mobile Row -->
+<div class="grid grid-cols-2 gap-4">
+<div class="flex flex-col gap-1">
+<label class="font-label-sm text-label-sm text-slate-700">Pincode</label>
+<input class="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 uphar-input shadow-sm font-data-mono placeholder:text-slate-400" maxlength="6" pattern="[0-9]{6}" placeholder="000000" type="text">
+</div>
+<div class="flex flex-col gap-1">
+<label class="font-label-sm text-label-sm text-slate-700">Mobile</label>
+<input class="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 uphar-input shadow-sm font-data-mono placeholder:text-slate-400" maxlength="10" pattern="[0-9]{10}" placeholder="10-digit" type="tel">
+</div>
+</div>
+<!-- Specimens Given (Tags) -->
+<div class="flex flex-col gap-2 md:col-span-2">
+<label class="font-label-sm text-label-sm text-slate-700 flex justify-between">
+                            Specimens Given <span class="font-hindi-hint text-hindi-hint text-slate-500">दिए गए नमूने</span>
+</label>
+<div class="flex flex-wrap gap-2 border border-slate-300 bg-white rounded p-2 min-h-[48px] items-start uphar-input shadow-sm" tabindex="0">
+<!-- Tag -->
+<span class="bg-blue-50 text-blue-800 border border-blue-200 px-2 py-1 rounded-full text-xs flex items-center gap-1 font-medium">
+                                Math Class 10 <button class="hover:text-blue-900" type="button"><span class="material-symbols-outlined text-[12px]">close</span></button>
+</span>
+<span class="bg-blue-50 text-blue-800 border border-blue-200 px-2 py-1 rounded-full text-xs flex items-center gap-1 font-medium">
+                                Science Class 9 <button class="hover:text-blue-900" type="button"><span class="material-symbols-outlined text-[12px]">close</span></button>
+</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm w-32 p-0 text-slate-900 flex-grow placeholder:text-slate-400" placeholder="Type to search..." type="text">
+</div>
+</div>
+<!-- Agent -->
+<div class="flex flex-col gap-1 md:col-span-2">
+<label class="font-label-sm text-label-sm text-slate-700">Assigned Agent</label>
+<select class="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 uphar-input shadow-sm">
+<option value="rahul">Rahul Sharma (North)</option>
+<option value="vikas">Vikas Singh (East)</option>
+<option value="amit">Amit Kumar (Central)</option>
+</select>
+</div>
+<!-- Actions -->
+<div class="flex gap-4 pt-4 mt-2 border-t border-slate-200 md:col-span-2 justify-end">
+<button class="px-6 py-2 bg-[#FBBF24] text-slate-900 hover:bg-[#F59E0B] transition-colors rounded font-label-sm font-bold shadow-sm" type="button">
+                            Clear Form
+                        </button>
+<button class="px-6 py-2 bg-[#1E40AF] text-white hover:bg-[#1e3a8a] transition-colors rounded font-label-sm font-bold shadow-md" type="button">
+                            Save Record
+                        </button>
+</div>
+</form>
+</div>
+<!-- Recent Entries Table -->
+<div class="mt-4 flex flex-col gap-4">
+<h3 class="font-headline-md text-headline-md text-slate-900">Today's Entries</h3>
+<div class="w-full overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-sm">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-[#1E40AF]">
+<th class="py-3 px-4 font-label-sm text-label-sm text-white uppercase tracking-wider">Challan No.</th>
+<th class="py-3 px-4 font-label-sm text-label-sm text-white uppercase tracking-wider">Institute</th>
+<th class="py-3 px-4 font-label-sm text-label-sm text-white uppercase tracking-wider">Status</th>
+<th class="py-3 px-4 font-label-sm text-label-sm text-white uppercase tracking-wider text-right">Actions</th>
+</tr>
+</thead>
+<tbody>
+<tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+<td class="py-3 px-4 font-data-mono text-data-mono text-slate-600">#CHL-0890</td>
+<td class="py-3 px-4 text-sm text-slate-900 font-medium">DAV Public School</td>
+<td class="py-3 px-4">
+<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">NEW</span>
+</td>
+<td class="py-3 px-4 text-right">
+<button class="text-slate-400 hover:text-[#1E40AF] transition-colors p-1"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+<td class="py-3 px-4 font-data-mono text-data-mono text-slate-600">#CHL-0889</td>
+<td class="py-3 px-4 text-sm text-slate-900 font-medium">Ramesh Book Depot</td>
+<td class="py-3 px-4">
+<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800 border border-green-200">SHIPPED</span>
+</td>
+<td class="py-3 px-4 text-right">
+<button class="text-slate-400 hover:text-[#1E40AF] transition-colors p-1"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="hover:bg-slate-50 transition-colors">
+<td class="py-3 px-4 font-data-mono text-data-mono text-slate-600">#CHL-0888</td>
+<td class="py-3 px-4 text-sm text-slate-900 font-medium">Saraswati Vidya Mandir</td>
+<td class="py-3 px-4">
+<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FBBF24]/20 text-yellow-800 border border-[#FBBF24]/50">PENDING</span>
+</td>
+<td class="py-3 px-4 text-right">
+<button class="text-slate-400 hover:text-[#1E40AF] transition-colors p-1"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 bg-white border-t border-slate-200 shadow-lg docked full-width bottom-0 z-50">
+<!-- Inactive -->
+<a class="flex flex-col items-center justify-center text-slate-500 p-2 active:bg-slate-100 rounded-xl" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1 text-xs">Home</span>
+</a>
+<!-- Active -->
+<a class="flex flex-col items-center justify-center bg-blue-50 text-[#1E40AF] rounded-xl p-2 active:bg-slate-100 scale-90 transition-transform" href="#">
+<span class="material-symbols-outlined filled">list_alt</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1 text-xs font-bold">Leads</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-500 p-2 active:bg-slate-100 rounded-xl" href="#">
+<span class="material-symbols-outlined">folder</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1 text-xs">Records</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-500 p-2 active:bg-slate-100 rounded-xl" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-sm-mobile text-label-sm-mobile mt-1 text-xs">Settings</span>
+</a>
+</nav>
+</body></html>

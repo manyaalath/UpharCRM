@@ -1,0 +1,349 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Uphar CRM - Super Admin Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=Noto+Sans+Devanagari:wght@400&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#1E40AF", // Blue
+                        "primary-container": "#DBEAFE",
+                        "on-primary": "#FFFFFF",
+                        "secondary": "#FBBF24", // Amber/Yellow
+                        "secondary-container": "#FEF3C7",
+                        "on-secondary": "#1F2937",
+                        "background": "#F9FAFB", // Light Gray
+                        "on-background": "#111827", // Dark Gray
+                        "surface": "#FFFFFF",
+                        "on-surface": "#1F2937",
+                        "on-surface-variant": "#4B5563",
+                        "surface-variant": "#E5E7EB",
+                        "surface-container": "#F3F4F6",
+                        "surface-container-low": "#F9FAFB",
+                        "outline": "#D1D5DB",
+                        "outline-variant": "#E5E7EB"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "gutter": "16px",
+                        "lg": "24px",
+                        "sidebar-width": "260px",
+                        "xl": "40px",
+                        "md": "16px",
+                        "xs": "4px",
+                        "sm": "8px",
+                        "base": "4px"
+                    },
+                    "fontFamily": {
+                        "display-lg-mobile": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "hindi-hint": ["Noto Sans Devanagari"],
+                        "data-mono": ["JetBrains Mono"],
+                        "headline-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "display-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "display-lg-mobile": ["24px", { "lineHeight": "1.2", "fontWeight": "700" }],
+                        "label-sm": ["13px", { "lineHeight": "1", "fontWeight": "600" }],
+                        "hindi-hint": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "data-mono": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "headline-md": ["20px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "display-lg": ["32px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .fill-icon {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .brand-accent-bottom {
+            border-bottom: 2px solid #1E40AF;
+        }
+        .card-border-top {
+            border-top: 2px solid #1E40AF;
+        }
+        .table-row-border {
+            border-bottom: 1px solid #E5E7EB;
+        }
+        /* Focus ring for interactive elements */
+        button:focus, a:focus, input:focus, select:focus {
+            outline: 2px solid #1E40AF;
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md text-body-md min-h-screen flex flex-col md:flex-row">
+<!-- Top Navigation (Mobile) -->
+<nav class="md:hidden flex justify-between items-center px-lg py-sm w-full bg-surface border-b border-outline-variant z-50 sticky top-0">
+<div class="flex items-center gap-sm">
+<span class="font-display-lg text-display-lg font-bold text-primary">उपहार प्रकाशन</span>
+</div>
+<div class="flex gap-sm">
+<button aria-label="Notifications" class="p-2 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button aria-label="Account" class="p-2 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</nav>
+<!-- Side Navigation (Web) -->
+<aside class="hidden md:flex flex-col h-screen w-[260px] py-lg bg-surface border-r border-outline-variant fixed top-0 left-0 z-40 overflow-y-auto shadow-sm">
+<div class="px-lg mb-xl">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Uphar CRM</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-xs">Distribution Hub</p>
+</div>
+<nav class="flex-1 flex flex-col gap-sm px-sm">
+<a aria-current="page" class="flex items-center gap-md px-md py-sm rounded-md text-primary border-r-2 border-primary font-bold bg-primary-container/30" href="#">
+<span class="material-symbols-outlined fill-icon">dashboard</span>
+                Dashboard
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-md text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined">person_search</span>
+                Leads
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-md text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined">inventory</span>
+                Records
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-md text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined">group</span>
+                Agents
+            </a>
+<a class="flex items-center gap-md px-md py-sm rounded-md text-on-surface-variant hover:bg-surface-container transition-all mt-auto" href="#">
+<span class="material-symbols-outlined">settings</span>
+                Settings
+            </a>
+</nav>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col min-w-0 md:ml-sidebar-width">
+<div class="flex-1 p-lg pb-[80px] md:pb-lg w-full max-w-[1600px] mx-auto">
+<!-- Page Header -->
+<header class="mb-xl">
+<h2 class="font-display-lg text-display-lg text-on-background mb-xs">Dashboard - June 2026</h2>
+<hr class="border-0 h-[2px] bg-primary w-full max-w-[200px] mt-xs">
+</header>
+<!-- KPI Cards -->
+<section class="grid grid-cols-2 lg:grid-cols-4 gap-md mb-xl">
+<div class="bg-surface p-md rounded shadow-sm card-border-top border border-outline-variant flex flex-col justify-between h-[120px]">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Challans</span>
+<span class="font-data-mono text-[32px] font-bold text-on-surface">1,240</span>
+</div>
+<div class="bg-surface p-md rounded shadow-sm card-border-top border border-outline-variant flex flex-col justify-between h-[120px]">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Schools</span>
+<span class="font-data-mono text-[32px] font-bold text-on-surface">87</span>
+</div>
+<div class="bg-surface p-md rounded shadow-sm card-border-top border border-outline-variant flex flex-col justify-between h-[120px]">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Leads</span>
+<span class="font-data-mono text-[32px] font-bold text-on-surface">312</span>
+</div>
+<div class="bg-surface p-md rounded shadow-sm card-border-top border border-outline-variant flex flex-col justify-between h-[120px]">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Pending</span>
+<span class="font-data-mono text-[32px] font-bold text-secondary">45</span>
+</div>
+</section>
+<!-- Charts Section (Simulated with layout) -->
+<section class="grid grid-cols-1 lg:grid-cols-3 gap-lg mb-xl">
+<!-- Bar Chart: District Distribution -->
+<div class="bg-surface p-md rounded shadow-sm border border-outline-variant col-span-1 lg:col-span-2 flex flex-col min-h-[300px]">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-md">District-wise Distribution</h3>
+<div class="flex-1 flex items-end justify-around pb-md pt-xl border-b border-surface-variant relative">
+<!-- Simulated Bars -->
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 bg-primary h-[180px] rounded-t-sm"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Patna</span>
+</div>
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 bg-[#93C5FD] h-[120px] rounded-t-sm"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Bhagalpur</span>
+</div>
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 bg-[#93C5FD] h-[150px] rounded-t-sm"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Gaya</span>
+</div>
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 bg-[#93C5FD] h-[90px] rounded-t-sm"></div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Muzaffarpur</span>
+</div>
+<!-- Grid Lines -->
+<div class="absolute w-full h-[1px] bg-surface-variant bottom-[40%] left-0 z-0"></div>
+<div class="absolute w-full h-[1px] bg-surface-variant bottom-[70%] left-0 z-0"></div>
+</div>
+</div>
+<!-- Pie Chart: Lead Status -->
+<div class="bg-surface p-md rounded shadow-sm border border-outline-variant flex flex-col min-h-[300px]">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-md">Lead Status</h3>
+<div class="flex-1 flex flex-col items-center justify-center relative">
+<!-- Simulated Donut Chart -->
+<div class="w-[160px] h-[160px] rounded-full border-[16px] border-surface-variant relative flex items-center justify-center mb-md">
+<!-- Overlay colored segments using border colors/gradients (simplified for HTML representation) -->
+<div class="absolute inset-[-16px] rounded-full border-[16px] border-transparent border-t-primary border-r-primary rotate-45"></div>
+<div class="absolute inset-[-16px] rounded-full border-[16px] border-transparent border-b-secondary border-l-secondary rotate-[135deg]"></div>
+<div class="text-center">
+<span class="block font-data-mono text-[24px] font-bold text-on-surface">312</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Total</span>
+</div>
+</div>
+<div class="w-full grid grid-cols-2 gap-y-xs gap-x-sm px-sm mt-auto">
+<div class="flex items-center gap-xs"><span class="w-2 h-2 rounded-full bg-primary"></span><span class="font-label-sm text-label-sm text-on-surface-variant">New</span></div>
+<div class="flex items-center gap-xs"><span class="w-2 h-2 rounded-full bg-secondary"></span><span class="font-label-sm text-label-sm text-on-surface-variant">Follow-up</span></div>
+<div class="flex items-center gap-xs"><span class="w-2 h-2 rounded-full bg-[#93C5FD]"></span><span class="font-label-sm text-label-sm text-on-surface-variant">Converted</span></div>
+<div class="flex items-center gap-xs"><span class="w-2 h-2 rounded-full bg-surface-variant"></span><span class="font-label-sm text-label-sm text-on-surface-variant">Closed</span></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Data Tables Section -->
+<section class="grid grid-cols-1 xl:grid-cols-2 gap-lg">
+<!-- Pending Follow-ups -->
+<div class="bg-surface rounded shadow-sm border border-outline-variant overflow-hidden flex flex-col">
+<div class="p-md border-b border-outline-variant bg-surface-container flex justify-between items-center">
+<h3 class="font-headline-md text-headline-md text-on-surface">Pending Follow-ups</h3>
+<span class="bg-secondary-container text-on-secondary font-label-sm text-[10px] px-2 py-1 rounded-sm uppercase tracking-wide border border-secondary">Action Required</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-outline-variant bg-surface-container-low">
+<th class="font-label-sm text-label-sm text-on-surface-variant uppercase p-sm font-semibold">Name</th>
+<th class="font-label-sm text-label-sm text-on-surface-variant uppercase p-sm font-semibold">Institute</th>
+<th class="font-label-sm text-label-sm text-on-surface-variant uppercase p-sm font-semibold">District</th>
+<th class="font-label-sm text-label-sm text-on-surface-variant uppercase p-sm font-semibold text-right">Action</th>
+</tr>
+</thead>
+<tbody class="font-data-mono text-data-mono">
+<tr class="table-row-border hover:bg-surface-container transition-colors">
+<td class="p-sm text-on-surface">Rakesh Sharma</td>
+<td class="p-sm text-on-surface-variant">Vidya Mandir School</td>
+<td class="p-sm text-on-surface-variant">Patna</td>
+<td class="p-sm text-right">
+<button class="bg-primary text-white px-md py-xs rounded text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-xs ml-auto">
+<span class="material-symbols-outlined text-[16px]">call</span> Call
+                                        </button>
+</td>
+</tr>
+<tr class="table-row-border hover:bg-surface-container transition-colors">
+<td class="p-sm text-on-surface">Sunil Verma</td>
+<td class="p-sm text-on-surface-variant">Gyan Niketan</td>
+<td class="p-sm text-on-surface-variant">Gaya</td>
+<td class="p-sm text-right">
+<button class="bg-primary text-white px-md py-xs rounded text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-xs ml-auto">
+<span class="material-symbols-outlined text-[16px]">call</span> Call
+                                        </button>
+</td>
+</tr>
+<tr class="table-row-border hover:bg-surface-container transition-colors">
+<td class="p-sm text-on-surface">Anita Devi</td>
+<td class="p-sm text-on-surface-variant">Saraswati Vidya</td>
+<td class="p-sm text-on-surface-variant">Bhagalpur</td>
+<td class="p-sm text-right">
+<button class="bg-primary text-white px-md py-xs rounded text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-xs ml-auto">
+<span class="material-symbols-outlined text-[16px]">call</span> Call
+                                        </button>
+</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors">
+<td class="p-sm text-on-surface">Rajesh Kumar</td>
+<td class="p-sm text-on-surface-variant">DAV Public</td>
+<td class="p-sm text-on-surface-variant">Muzaffarpur</td>
+<td class="p-sm text-right">
+<button class="bg-primary text-white px-md py-xs rounded text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-xs ml-auto">
+<span class="material-symbols-outlined text-[16px]">call</span> Call
+                                        </button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Agent Performance -->
+<div class="bg-surface rounded shadow-sm border border-outline-variant overflow-hidden flex flex-col">
+<div class="p-md border-b border-outline-variant bg-surface-container">
+<h3 class="font-headline-md text-headline-md text-on-surface">Agent Performance</h3>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-outline-variant bg-surface-container-low">
+<th class="font-label-sm text-label-sm text-on-surface-variant uppercase p-sm font-semibold">Agent Name</th>
+<th class="font-label-sm text-label-sm text-on-surface-variant uppercase p-sm font-semibold text-right">Challans</th>
+<th class="font-label-sm text-label-sm text-on-surface-variant uppercase p-sm font-semibold text-right">Leads</th>
+</tr>
+</thead>
+<tbody class="font-data-mono text-data-mono">
+<tr class="table-row-border hover:bg-surface-container transition-colors">
+<td class="p-sm text-on-surface flex items-center gap-sm">
+<div class="w-6 h-6 rounded bg-surface-variant flex items-center justify-center text-[10px] text-on-surface-variant font-bold">AM</div>
+                                        Amit Mishra
+                                    </td>
+<td class="p-sm text-right text-on-surface">342</td>
+<td class="p-sm text-right text-on-surface-variant">89</td>
+</tr>
+<tr class="table-row-border hover:bg-surface-container transition-colors">
+<td class="p-sm text-on-surface flex items-center gap-sm">
+<div class="w-6 h-6 rounded bg-surface-variant flex items-center justify-center text-[10px] text-on-surface-variant font-bold">ST</div>
+                                        Sanjay Tiwari
+                                    </td>
+<td class="p-sm text-right text-on-surface">281</td>
+<td class="p-sm text-right text-on-surface-variant">65</td>
+</tr>
+<tr class="table-row-border hover:bg-surface-container transition-colors">
+<td class="p-sm text-on-surface flex items-center gap-sm">
+<div class="w-6 h-6 rounded bg-surface-variant flex items-center justify-center text-[10px] text-on-surface-variant font-bold">PY</div>
+                                        Prakash Yadav
+                                    </td>
+<td class="p-sm text-right text-on-surface">210</td>
+<td class="p-sm text-right text-on-surface-variant">52</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors">
+<td class="p-sm text-on-surface flex items-center gap-sm">
+<div class="w-6 h-6 rounded bg-surface-variant flex items-center justify-center text-[10px] text-on-surface-variant font-bold">VS</div>
+                                        Vikram Singh
+                                    </td>
+<td class="p-sm text-right text-on-surface">195</td>
+<td class="p-sm text-right text-on-surface-variant">41</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+</div>
+</main>
+<!-- Bottom Navigation (Mobile) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 bg-surface border-t border-outline-variant shadow-lg">
+<a aria-current="page" class="flex flex-col items-center justify-center bg-primary-container text-primary rounded-xl p-2 min-w-[64px]" href="#">
+<span class="material-symbols-outlined fill-icon">home</span>
+<span class="font-label-sm-mobile text-[10px] mt-xs">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:bg-surface-container rounded-xl min-w-[64px] transition-colors" href="#">
+<span class="material-symbols-outlined">list_alt</span>
+<span class="font-label-sm-mobile text-[10px] mt-xs">Leads</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:bg-surface-container rounded-xl min-w-[64px] transition-colors" href="#">
+<span class="material-symbols-outlined">folder</span>
+<span class="font-label-sm-mobile text-[10px] mt-xs">Records</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:bg-surface-container rounded-xl min-w-[64px] transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-sm-mobile text-[10px] mt-xs">Settings</span>
+</a>
+</nav>
+</body></html>

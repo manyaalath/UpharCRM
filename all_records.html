@@ -1,0 +1,299 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>All Records - Uphar CRM</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-dim": "#d9dadc",
+                        "primary-container": "#1e40af",
+                        "surface-container-highest": "#e1e2e4",
+                        "tertiary-fixed": "#dce2f3",
+                        "surface-container-low": "#f3f4f6",
+                        "surface-container-high": "#e7e8ea",
+                        "on-primary-container": "#a8b8ff",
+                        "inverse-on-surface": "#f0f1f3",
+                        "secondary-fixed": "#ffdf9f",
+                        "inverse-surface": "#2e3132",
+                        "tertiary-container": "#444b58",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed-variant": "#173bab",
+                        "outline": "#757684",
+                        "on-secondary-fixed": "#261a00",
+                        "inverse-primary": "#b8c4ff",
+                        "primary": "#00288e",
+                        "on-primary-fixed": "#001453",
+                        "on-surface": "#191c1e",
+                        "tertiary": "#2d3441",
+                        "surface-bright": "#f8f9fb",
+                        "background": "#f8f9fb",
+                        "primary-fixed": "#dde1ff",
+                        "on-primary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "outline-variant": "#c4c5d5",
+                        "secondary-fixed-dim": "#f9bd22",
+                        "secondary-container": "#ffc329",
+                        "on-surface-variant": "#444653",
+                        "on-secondary-fixed-variant": "#5c4300",
+                        "error-container": "#ffdad6",
+                        "surface-container": "#edeef0",
+                        "secondary": "#795900",
+                        "on-tertiary-container": "#b4bbca",
+                        "on-background": "#191c1e",
+                        "tertiary-fixed-dim": "#c0c7d6",
+                        "surface-variant": "#e1e2e4",
+                        "on-tertiary-fixed-variant": "#404754",
+                        "surface": "#f8f9fb",
+                        "primary-fixed-dim": "#b8c4ff",
+                        "on-error-container": "#93000a",
+                        "surface-tint": "#3755c3",
+                        "on-secondary-container": "#6f5100",
+                        "on-tertiary": "#ffffff",
+                        "on-tertiary-fixed": "#151c27",
+                        "on-secondary": "#ffffff",
+                        "on-error": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "gutter": "16px",
+                        "xs": "4px",
+                        "xl": "32px",
+                        "sm": "8px",
+                        "base": "4px",
+                        "md": "16px",
+                        "lg": "24px",
+                        "container-margin": "24px",
+                        "sidebar-width": "260px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "label-sm": ["11px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "body-sm": ["12px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "display-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-sm": ["16px", { "lineHeight": "24px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-screen w-[260px] py-lg bg-surface-container dark:bg-surface-container border-r border-outline-variant fixed left-0 top-0 z-40">
+<div class="px-lg mb-8">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Uphar CRM</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Distribution Hub</p>
+</div>
+<ul class="flex flex-col space-y-2 flex-grow">
+<li>
+<a class="flex items-center px-lg py-sm font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-bright transition-all" href="#">
+<span class="material-symbols-outlined mr-sm">dashboard</span>Dashboard
+                </a>
+</li>
+<li>
+<a class="flex items-center px-lg py-sm font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-bright transition-all" href="#">
+<span class="material-symbols-outlined mr-sm">person_search</span>Leads
+                </a>
+</li>
+<li>
+<a class="flex items-center px-lg py-sm font-label-sm text-label-sm text-primary border-r-2 border-primary font-bold active:scale-95 hover:bg-surface-bright transition-all" href="#">
+<span class="material-symbols-outlined mr-sm">inventory</span>Records
+                </a>
+</li>
+<li>
+<a class="flex items-center px-lg py-sm font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-bright transition-all" href="#">
+<span class="material-symbols-outlined mr-sm">group</span>Agents
+                </a>
+</li>
+<li>
+<a class="flex items-center px-lg py-sm font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-bright transition-all" href="#">
+<span class="material-symbols-outlined mr-sm">settings</span>Settings
+                </a>
+</li>
+</ul>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-grow flex flex-col md:ml-[260px] min-h-screen">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center px-lg py-sm w-full bg-surface dark:bg-surface border-b border-outline-variant sticky top-0 z-30">
+<div class="flex items-center">
+<span class="font-display-lg text-display-lg font-bold text-primary dark:text-primary md:hidden">उपहार प्रकाशन</span>
+</div>
+<div class="flex items-center space-x-md">
+<div class="relative hidden md:block">
+<span class="material-symbols-outlined absolute left-sm top-1/2 transform -translate-y-1/2 text-outline">search</span>
+<input class="pl-xl pr-sm py-xs border border-outline-variant rounded-DEFAULT focus:border-primary focus:ring-2 focus:ring-primary-fixed-dim bg-surface-container-lowest text-body-sm font-body-sm w-64" placeholder="Search..." type="text">
+</div>
+<button class="text-on-surface-variant hover:text-primary transition-colors active:opacity-80">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors active:opacity-80">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</header>
+<!-- Workspace Canvas -->
+<div class="p-container-margin flex-grow flex flex-col">
+<!-- Page Header & Actions -->
+<div class="flex flex-col md:flex-row md:items-center justify-between mb-md pb-xs border-b-2 border-primary">
+<h2 class="font-headline-lg text-headline-lg text-on-background">All Challan Records</h2>
+<div class="flex space-x-sm mt-sm md:mt-0">
+<button class="px-md py-sm bg-primary text-on-primary font-label-md text-label-md rounded-DEFAULT hover:bg-primary-container transition-colors flex items-center shadow-sm">
+<span class="material-symbols-outlined text-[18px] mr-xs">add</span> New Challan
+                    </button>
+<button class="px-md py-sm border border-primary text-primary font-label-md text-label-md rounded-DEFAULT hover:bg-primary-fixed transition-colors flex items-center bg-surface-container-lowest">
+<span class="material-symbols-outlined text-[18px] mr-xs">download</span> Export
+                    </button>
+</div>
+</div>
+<!-- Filter Bar -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg p-md mb-lg flex flex-col md:flex-row gap-md shadow-sm">
+<div class="flex-grow relative">
+<span class="material-symbols-outlined absolute left-sm top-1/2 transform -translate-y-1/2 text-outline">search</span>
+<input class="w-full pl-xl pr-sm py-sm border border-outline-variant rounded-DEFAULT focus:border-primary focus:ring-2 focus:ring-primary-fixed-dim text-body-sm font-body-sm" placeholder="Search Challan #, Name, Institute..." type="text">
+</div>
+<div class="flex flex-col md:flex-row gap-sm">
+<select class="border border-outline-variant rounded-DEFAULT py-sm px-md focus:border-primary focus:ring-2 focus:ring-primary-fixed-dim text-body-sm font-body-sm bg-surface-container-lowest">
+<option>Date Range: All Time</option>
+<option>Last 7 Days</option>
+<option>Last 30 Days</option>
+<option>This Month</option>
+</select>
+<select class="border border-outline-variant rounded-DEFAULT py-sm px-md focus:border-primary focus:ring-2 focus:ring-primary-fixed-dim text-body-sm font-body-sm bg-surface-container-lowest">
+<option>Agent: All</option>
+<option>Agent A</option>
+<option>Agent B</option>
+</select>
+<select class="border border-outline-variant rounded-DEFAULT py-sm px-md focus:border-primary focus:ring-2 focus:ring-primary-fixed-dim text-body-sm font-body-sm bg-surface-container-lowest">
+<option>District: All</option>
+<option>District X</option>
+<option>District Y</option>
+</select>
+</div>
+</div>
+<!-- Data Table Container -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-lg flex-grow flex flex-col overflow-hidden shadow-sm">
+<div class="overflow-x-auto flex-grow">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low border-b-2 border-primary sticky top-0 z-10">
+<tr>
+<th class="py-sm px-md font-label-md text-label-md text-on-surface-variant whitespace-nowrap">Challan #</th>
+<th class="py-sm px-md font-label-md text-label-md text-on-surface-variant whitespace-nowrap">Date</th>
+<th class="py-sm px-md font-label-md text-label-md text-on-surface-variant whitespace-nowrap">Name</th>
+<th class="py-sm px-md font-label-md text-label-md text-on-surface-variant whitespace-nowrap">Institute</th>
+<th class="py-sm px-md font-label-md text-label-md text-on-surface-variant whitespace-nowrap">District</th>
+<th class="py-sm px-md font-label-md text-label-md text-on-surface-variant whitespace-nowrap text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<tr class="hover:bg-surface-bright transition-colors h-[40px]">
+<td class="py-xs px-md font-body-sm text-body-sm font-medium text-primary-container">CH-2023-001</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Oct 24, 2023</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Rajesh Kumar</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Modern Public School</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Lucknow</td>
+<td class="py-xs px-md text-right">
+<button class="text-primary hover:text-primary-container"><span class="material-symbols-outlined text-[18px]">visibility</span></button>
+</td>
+</tr>
+<tr class="bg-surface-container-low hover:bg-surface-bright transition-colors h-[40px]">
+<td class="py-xs px-md font-body-sm text-body-sm font-medium text-primary-container">CH-2023-002</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Oct 23, 2023</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Anita Singh</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Gyan Vidya Mandir</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Kanpur</td>
+<td class="py-xs px-md text-right">
+<button class="text-primary hover:text-primary-container"><span class="material-symbols-outlined text-[18px]">visibility</span></button>
+</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors h-[40px]">
+<td class="py-xs px-md font-body-sm text-body-sm font-medium text-primary-container">CH-2023-003</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Oct 22, 2023</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Vikram Sharma</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Saraswati Shishu Mandir</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Varanasi</td>
+<td class="py-xs px-md text-right">
+<button class="text-primary hover:text-primary-container"><span class="material-symbols-outlined text-[18px]">visibility</span></button>
+</td>
+</tr>
+<!-- More rows to fill space -->
+<tr class="bg-surface-container-low hover:bg-surface-bright transition-colors h-[40px]">
+<td class="py-xs px-md font-body-sm text-body-sm font-medium text-primary-container">CH-2023-004</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Oct 21, 2023</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Meera Gupta</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">St. Xavier's</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Agra</td>
+<td class="py-xs px-md text-right">
+<button class="text-primary hover:text-primary-container"><span class="material-symbols-outlined text-[18px]">visibility</span></button>
+</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors h-[40px]">
+<td class="py-xs px-md font-body-sm text-body-sm font-medium text-primary-container">CH-2023-005</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Oct 20, 2023</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Suresh Verma</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">DAV Inter College</td>
+<td class="py-xs px-md font-body-sm text-body-sm text-on-surface">Meerut</td>
+<td class="py-xs px-md text-right">
+<button class="text-primary hover:text-primary-container"><span class="material-symbols-outlined text-[18px]">visibility</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination -->
+<div class="bg-surface-container-low border-t border-outline-variant p-sm flex items-center justify-between">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Showing 1 to 5 of 42 entries</span>
+<div class="flex space-x-xs">
+<button class="p-xs text-on-surface-variant hover:text-primary disabled:opacity-50" disabled=""><span class="material-symbols-outlined text-[20px]">chevron_left</span></button>
+<button class="w-8 h-8 rounded-DEFAULT bg-primary text-on-primary font-label-sm text-label-sm flex items-center justify-center">1</button>
+<button class="w-8 h-8 rounded-DEFAULT text-on-surface-variant hover:bg-surface-bright font-label-sm text-label-sm flex items-center justify-center border border-transparent hover:border-outline-variant">2</button>
+<button class="w-8 h-8 rounded-DEFAULT text-on-surface-variant hover:bg-surface-bright font-label-sm text-label-sm flex items-center justify-center border border-transparent hover:border-outline-variant">3</button>
+<button class="p-xs text-on-surface-variant hover:text-primary"><span class="material-symbols-outlined text-[20px]">chevron_right</span></button>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 bg-surface-container-highest dark:bg-surface-container-highest border-t border-outline-variant shadow-lg">
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 active:bg-surface-bright font-label-sm-mobile text-label-sm-mobile" href="#">
+<span class="material-symbols-outlined mb-1">home</span>Home
+        </a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 active:bg-surface-bright font-label-sm-mobile text-label-sm-mobile" href="#">
+<span class="material-symbols-outlined mb-1">list_alt</span>Leads
+        </a>
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-xl p-2 active:scale-90 transition-transform font-label-sm-mobile text-label-sm-mobile" href="#">
+<span class="material-symbols-outlined mb-1">folder</span>Records
+        </a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 active:bg-surface-bright font-label-sm-mobile text-label-sm-mobile" href="#">
+<span class="material-symbols-outlined mb-1">settings</span>Settings
+        </a>
+</nav>
+</body></html>
