@@ -149,16 +149,16 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
           </div>
         </div>
 
-        {/* Agent Performance */}
+        {/* Representative Performance */}
         <div className="bg-white rounded shadow-sm border border-slate-200 overflow-hidden flex flex-col">
           <div className="p-4 border-b border-slate-200 bg-slate-50">
-            <h3 className="text-[20px] font-semibold text-slate-900">Agent Performance</h3>
+            <h3 className="text-[20px] font-semibold text-slate-900">Representative Performance</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="text-[13px] font-semibold text-slate-500 uppercase p-2">Agent Name</th>
+                  <th className="text-[13px] font-semibold text-slate-500 uppercase p-2">Representative Name</th>
                   <th className="text-[13px] font-semibold text-slate-500 uppercase p-2 text-right">Challans</th>
                   <th className="text-[13px] font-semibold text-slate-500 uppercase p-2 text-right">Leads</th>
                 </tr>
@@ -178,7 +178,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                 ))}
                 {agentData.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="p-4 text-center text-slate-500 font-sans">No agent data</td>
+                    <td colSpan={3} className="p-4 text-center text-slate-500 font-sans">No representative data</td>
                   </tr>
                 )}
               </tbody>

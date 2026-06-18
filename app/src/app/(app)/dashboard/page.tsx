@@ -57,7 +57,7 @@ async function fetchDashboardData() {
     .order('next_followup_date', { ascending: true })
     .limit(5);
 
-  // Agent performance
+  // Representative performance
   const { data: agentChallans } = await supabase.from('challans').select('agent_name');
   const { data: agentLeads } = await supabase.from('leads').select('agent_name');
   const agentStats: Record<string, { challan_count: number; lead_count: number }> = {};

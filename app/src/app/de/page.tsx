@@ -3,24 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Challan } from '@/lib/types';
 
-// ── District data ─────────────────────────────────────────────────────────────
-const BIHAR_DISTRICTS = [
-  'Araria', 'Arwal', 'Aurangabad', 'Banka', 'Begusarai', 'Bhagalpur',
-  'Bhojpur', 'Buxar', 'Darbhanga', 'East Champaran', 'Gaya', 'Gopalganj',
-  'Jamui', 'Jehanabad', 'Kaimur', 'Katihar', 'Khagaria', 'Kishanganj',
-  'Lakhisarai', 'Madhepura', 'Madhubani', 'Munger', 'Muzaffarpur', 'Nalanda',
-  'Nawada', 'Patna', 'Purnia', 'Rohtas', 'Saharsa', 'Samastipur', 'Saran',
-  'Sheikhpura', 'Sheohar', 'Sitamarhi', 'Siwan', 'Supaul', 'Vaishali',
-  'West Champaran',
-];
-
-const JHARKHAND_DISTRICTS = [
-  'Bokaro', 'Chatra', 'Deoghar', 'Dhanbad', 'Dumka', 'East Singhbhum',
-  'Garhwa', 'Giridih', 'Godda', 'Gumla', 'Hazaribagh', 'Jamtara',
-  'Khunti', 'Koderma', 'Latehar', 'Lohardaga', 'Pakur', 'Palamu',
-  'Ramgarh', 'Ranchi', 'Sahebganj', 'Seraikela Kharsawan', 'Simdega',
-  'West Singhbhum',
-];
+import { BIHAR_DISTRICTS, JHARKHAND_DISTRICTS } from '@/lib/constants';
 
 const STATE_OPTIONS = ['Bihar', 'Jharkhand', 'Other'];
 

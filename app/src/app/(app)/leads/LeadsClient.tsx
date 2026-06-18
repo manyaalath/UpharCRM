@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import LeadDrawer from './LeadDrawer';
 import { LEAD_STATUS_COLORS, LEAD_STATUS_OPTIONS, Lead } from '@/lib/types';
+import { ALL_DISTRICTS } from '@/lib/constants';
 
 export default function LeadsClient({ initialData, totalCount, agents }: { initialData: Lead[], totalCount: number, agents: string[] }) {
   const [leads] = useState<Lead[]>(initialData);
@@ -61,15 +62,15 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
             <label className="block text-[13px] font-semibold text-slate-500 mb-1">District</label>
             <select className="w-full bg-white border border-slate-200 rounded-md py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px] outline-none appearance-none">
               <option value="">All Districts</option>
-              <option value="Lucknow">Lucknow</option>
-              <option value="Kanpur">Kanpur</option>
-              <option value="Varanasi">Varanasi</option>
+              {ALL_DISTRICTS.map(d => (
+                <option key={d} value={d}>{d}</option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="block text-[13px] font-semibold text-slate-500 mb-1">Agent</label>
+            <label className="block text-[13px] font-semibold text-slate-500 mb-1">Representative</label>
             <select className="w-full bg-white border border-slate-200 rounded-md py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px] outline-none appearance-none">
-              <option value="">All Agents</option>
+              <option value="">All Representatives</option>
               {agents.map(a => (
                 <option key={a} value={a}>{a}</option>
               ))}
@@ -88,7 +89,7 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
                 <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Institute</th>
                 <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Status</th>
                 <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Next Due</th>
-                <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Agent</th>
+                <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Representative</th>
                 <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500 text-right">Actions</th>
               </tr>
             </thead>

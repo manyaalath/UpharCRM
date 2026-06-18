@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from 'react';
 
-interface Agent {
+interface Representative {
   id: string;
   name: string;
   is_active: boolean;
   created_at: string;
 }
 
-export default function AgentsPage() {
-  const [agents, setAgents] = useState<Agent[]>([]);
+export default function RepresentativesPage() {
+  const [agents, setAgents] = useState<Representative[]>([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
   const [adding, setAdding] = useState(false);
@@ -41,7 +41,7 @@ export default function AgentsPage() {
         body: JSON.stringify({ name: newName.trim() }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Failed to add agent'); return; }
+      if (!res.ok) { setError(data.error || 'Failed to add representative'); return; }
       setNewName('');
       fetchAgents();
     } finally {
@@ -53,17 +53,17 @@ export default function AgentsPage() {
     <div className="flex-grow flex flex-col items-center pb-24 md:pb-8 pt-4 md:pt-8 px-4 w-full">
       <div className="w-full max-w-[600px] flex flex-col gap-6">
         <div>
-          <h1 className="text-[28px] font-bold text-slate-900">Agents</h1>
+          <h1 className="text-[28px] font-bold text-slate-900">Representatives</h1>
           <hr className="h-[3px] bg-[#1E40AF] border-none mt-2 w-full rounded-full" />
         </div>
 
-        {/* Add agent form */}
+        {/* Add representative form */}
         <form onSubmit={handleAdd} className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm flex gap-3">
           <input
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Agent name"
+            placeholder="Representative name"
             className="flex-1 bg-white border border-slate-300 rounded-lg px-4 py-2.5 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px]"
           />
           <button
@@ -71,7 +71,7 @@ export default function AgentsPage() {
             disabled={adding || !newName.trim()}
             className="px-5 py-2.5 bg-[#1E40AF] text-white rounded-lg text-[13px] font-semibold hover:bg-[#1e3a8a] transition-colors disabled:opacity-50"
           >
-            {adding ? '...' : 'Add Agent'}
+            {adding ? '...' : 'Add Representative'}
           </button>
         </form>
 
@@ -79,7 +79,7 @@ export default function AgentsPage() {
           <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>
         )}
 
-        {/* Agents list */}
+        {/* Representatives list */}
         {loading ? (
           <div className="flex items-center justify-center py-16 text-slate-500 gap-2">
             <span className="material-symbols-outlined animate-spin">progress_activity</span>
@@ -88,7 +88,7 @@ export default function AgentsPage() {
         ) : (
           <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
             {agents.length === 0 ? (
-              <div className="py-10 text-center text-slate-500 text-sm">No agents yet.</div>
+              <div className="py-10 text-center text-slate-500 text-sm">No representatives yet.</div>
             ) : (
               <table className="w-full text-left">
                 <thead>

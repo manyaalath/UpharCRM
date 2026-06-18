@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Challan } from '@/lib/types';
+import { ALL_DISTRICTS } from '@/lib/constants';
 
 export default function RecordsClient({ initialData, totalCount }: { initialData: Challan[], totalCount: number }) {
   const [challans] = useState<Challan[]>(initialData);
@@ -39,9 +40,9 @@ export default function RecordsClient({ initialData, totalCount }: { initialData
           </select>
           <select className="border border-slate-200 rounded py-2 px-3 focus:border-[#1E40AF] focus:ring-2 focus:ring-[#DBEAFE] text-sm bg-white outline-none">
             <option>District: All</option>
-            <option>Lucknow</option>
-            <option>Kanpur</option>
-            <option>Varanasi</option>
+            {ALL_DISTRICTS.map(d => (
+              <option key={d} value={d}>{d}</option>
+            ))}
           </select>
         </div>
       </div>
