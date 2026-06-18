@@ -3,30 +3,73 @@
 import { useState, useEffect } from 'react';
 import { Challan } from '@/lib/types';
 
+// ── District data ─────────────────────────────────────────────────────────────
+const BIHAR_DISTRICTS = [
+  'Araria', 'Arwal', 'Aurangabad', 'Banka', 'Begusarai', 'Bhagalpur',
+  'Bhojpur', 'Buxar', 'Darbhanga', 'East Champaran', 'Gaya', 'Gopalganj',
+  'Jamui', 'Jehanabad', 'Kaimur', 'Katihar', 'Khagaria', 'Kishanganj',
+  'Lakhisarai', 'Madhepura', 'Madhubani', 'Munger', 'Muzaffarpur', 'Nalanda',
+  'Nawada', 'Patna', 'Purnia', 'Rohtas', 'Saharsa', 'Samastipur', 'Saran',
+  'Sheikhpura', 'Sheohar', 'Sitamarhi', 'Siwan', 'Supaul', 'Vaishali',
+  'West Champaran',
+];
+
+const JHARKHAND_DISTRICTS = [
+  'Bokaro', 'Chatra', 'Deoghar', 'Dhanbad', 'Dumka', 'East Singhbhum',
+  'Garhwa', 'Giridih', 'Godda', 'Gumla', 'Hazaribagh', 'Jamtara',
+  'Khunti', 'Koderma', 'Latehar', 'Lohardaga', 'Pakur', 'Palamu',
+  'Ramgarh', 'Ranchi', 'Sahebganj', 'Seraikela Kharsawan', 'Simdega',
+  'West Singhbhum',
+];
+
+const STATE_OPTIONS = ['Bihar', 'Jharkhand', 'Other'];
+
+function getDistrictsForState(state: string): string[] {
+  if (state === 'Bihar') return BIHAR_DISTRICTS;
+  if (state === 'Jharkhand') return JHARKHAND_DISTRICTS;
+  return [];
+}
+
+// ── Component ──────────────────────────────────────────────────────────────────
 export default function DEDataEntryPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [recentEntries, setRecentEntries] = useState<Challan[]>([]);
+  const [specimenBooks, setSpecimenBooks] = useState<{ id: string; name: string; book_code: string | null }[]>([]);
 
+  // Form state
   const [challanNo, setChallanNo] = useState('');
   const [challanDate, setChallanDate] = useState(new Date().toISOString().split('T')[0]);
   const [teacherName, setTeacherName] = useState('');
   const [instituteName, setInstituteName] = useState('');
   const [address, setAddress] = useState('');
+  const [state, setState] = useState('');
+  const [otherState, setOtherState] = useState('');
   const [district, setDistrict] = useState('');
+  const [otherDistrict, setOtherDistrict] = useState('');
   const [pincode, setPincode] = useState('');
   const [mobileNo, setMobileNo] = useState('');
+  const [mobileError, setMobileError] = useState('');
   const [agentName, setAgentName] = useState('');
   const [specimens, setSpecimens] = useState<string[]>([]);
-  const [currentTag, setCurrentTag] = useState('');
+  
+  // Specimen Search State
+  const [specimenSearch, setSpecimenSearch] = useState('');
+  const [showSpecimenDropdown, setShowSpecimenDropdown] = useState(false);
 
   useEffect(() => {
-    setChallanNo(`CHL-${Math.floor(1000 + Math.random() * 9000)}`);
     fetchAgents();
     fetchRecentEntries();
+    fetchSpecimenBooks();
   }, []);
+
+  // Reset district when state changes
+  useEffect(() => {
+    setDistrict('');
+    setOtherDistrict('');
+  }, [state]);
 
   const fetchAgents = async () => {
     try {
@@ -48,27 +91,63 @@ export default function DEDataEntryPage() {
     }
   };
 
-  const handleAddTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && currentTag.trim() !== '') {
-      e.preventDefault();
-      if (!specimens.includes(currentTag.trim())) {
-        setSpecimens([...specimens, currentTag.trim()]);
-      }
-      setCurrentTag('');
+  const fetchSpecimenBooks = async () => {
+    try {
+      const res = await fetch('/api/specimen-books');
+      const data = await res.json();
+      if (data.data) setSpecimenBooks(data.data);
+    } catch (err) {
+      console.error('Error fetching specimen books:', err);
     }
   };
 
-  const handleRemoveTag = (tag: string) => setSpecimens(specimens.filter(t => t !== tag));
+  const handleMobileChange = (val: string) => {
+    const digits = val.replace(/\D/g, '').slice(0, 10);
+    setMobileNo(digits);
+    if (digits.length > 0 && digits.length < 10) {
+      setMobileError('Mobile number must be exactly 10 digits');
+    } else {
+      setMobileError('');
+    }
+  };
+
+  const toggleSpecimen = (displayName: string) => {
+    setSpecimens(prev =>
+      prev.includes(displayName) ? prev.filter(s => s !== displayName) : [...prev, displayName]
+    );
+    setSpecimenSearch('');
+    setShowSpecimenDropdown(false);
+  };
+
+  const getBookDisplayName = (book: { name: string; book_code: string | null }) => {
+    return book.book_code ? `${book.book_code} - ${book.name}` : book.name;
+  };
+
+  // Filter specimen books based on search
+  const filteredSpecimenBooks = specimenBooks.filter(book => {
+    const searchLower = specimenSearch.toLowerCase();
+    const nameMatch = book.name.toLowerCase().includes(searchLower);
+    const codeMatch = book.book_code?.toLowerCase().includes(searchLower);
+    return nameMatch || codeMatch;
+  });
+
+  // Effective district value to send to API
+  const effectiveState = state === 'Other' ? otherState : state;
+  const effectiveDistrict = district === 'Other' ? otherDistrict : district;
 
   const handleClear = () => {
-    setChallanNo(`CHL-${Math.floor(1000 + Math.random() * 9000)}`);
+    setChallanNo('');
     setChallanDate(new Date().toISOString().split('T')[0]);
     setTeacherName('');
     setInstituteName('');
     setAddress('');
+    setState('');
+    setOtherState('');
     setDistrict('');
+    setOtherDistrict('');
     setPincode('');
     setMobileNo('');
+    setMobileError('');
     setAgentName('');
     setSpecimens([]);
     setError(null);
@@ -77,6 +156,28 @@ export default function DEDataEntryPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Extra client-side mobile validation
+    if (!/^\d{10}$/.test(mobileNo)) {
+      setMobileError('Mobile number must be exactly 10 digits');
+      return;
+    }
+
+    if (!effectiveDistrict.trim()) {
+      setError('Please specify a district');
+      return;
+    }
+
+    if (state === 'Other' && !otherState.trim()) {
+      setError('Please specify a state');
+      return;
+    }
+
+    if (specimens.length === 0) {
+      setError('Please select at least one specimen book');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccess(false);
@@ -91,7 +192,7 @@ export default function DEDataEntryPage() {
           teacher_name: teacherName,
           institute_name: instituteName,
           address,
-          district,
+          district: effectiveDistrict,
           pincode,
           mobile_no: mobileNo,
           specimens_given: specimens,
@@ -104,13 +205,15 @@ export default function DEDataEntryPage() {
 
       setSuccess(true);
       fetchRecentEntries();
-      setChallanNo(`CHL-${Math.floor(1000 + Math.random() * 9000)}`);
+      setChallanNo('');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
   };
+
+  const districtOptions = getDistrictsForState(state);
 
   return (
     <div className="flex-grow flex flex-col items-center pb-10 pt-6 px-4 w-full max-w-full">
@@ -135,27 +238,20 @@ export default function DEDataEntryPage() {
 
         <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-8">
+
             {/* Challan No */}
             <div className="flex flex-col gap-1">
-              <label className="text-[13px] font-semibold text-slate-700">Challan No.</label>
-              <div className="flex items-center justify-between">
-                <input
-                  type="text"
-                  value={challanNo}
-                  onChange={(e) => setChallanNo(e.target.value)}
-                  className="font-mono text-amber-600 font-bold bg-transparent border-none focus:ring-0 p-0"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setChallanNo(`CHL-${Math.floor(1000 + Math.random() * 9000)}`)}
-                  className="text-slate-400 hover:text-amber-500"
-                  title="Regenerate"
-                >
-                  <span className="material-symbols-outlined text-sm">refresh</span>
-                </button>
-              </div>
-              <div className="h-[1px] bg-slate-200 w-full mt-1" />
+              <label className="text-[13px] font-semibold text-slate-700">
+                Challan No. <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={challanNo}
+                onChange={(e) => setChallanNo(e.target.value)}
+                required
+                placeholder="Enter challan number"
+                className="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm font-mono placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
             </div>
 
             {/* Date */}
@@ -175,7 +271,7 @@ export default function DEDataEntryPage() {
             {/* Teacher Name */}
             <div className="flex flex-col gap-1 md:col-span-2">
               <label className="text-[13px] font-semibold text-slate-700 flex justify-between">
-                Teacher / Contact Name <span className="text-slate-500 font-normal">शिक्षक / संपर्क का नाम</span>
+                Teacher / Shopkeeper Name <span className="text-slate-500 font-normal">शिक्षक / दुकानदार का नाम</span>
               </label>
               <input
                 type="text"
@@ -190,7 +286,7 @@ export default function DEDataEntryPage() {
             {/* Institute */}
             <div className="flex flex-col gap-1 md:col-span-2">
               <label className="text-[13px] font-semibold text-slate-700 flex justify-between">
-                Institute / School / Shop <span className="text-slate-500 font-normal">संस्थान / स-कूल / दुकान</span>
+                Institute / School / Shop <span className="text-slate-500 font-normal">संस्थान / स्कूल / दुकान</span>
               </label>
               <input
                 type="text"
@@ -217,36 +313,91 @@ export default function DEDataEntryPage() {
               />
             </div>
 
+            {/* State */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[13px] font-semibold text-slate-700 flex justify-between">
+                State <span className="text-slate-500 font-normal">राज्य</span>
+              </label>
+              <select
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                required
+                className="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+              >
+                <option value="">Select State</option>
+                {STATE_OPTIONS.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              {state === 'Other' && (
+                <input
+                  type="text"
+                  value={otherState}
+                  onChange={(e) => setOtherState(e.target.value)}
+                  required
+                  placeholder="Enter state name"
+                  className="mt-2 bg-white border border-amber-300 rounded px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+              )}
+            </div>
+
             {/* District */}
             <div className="flex flex-col gap-1">
               <label className="text-[13px] font-semibold text-slate-700 flex justify-between">
                 District <span className="text-slate-500 font-normal">ज़िला</span>
               </label>
-              <select
-                value={district}
-                onChange={(e) => setDistrict(e.target.value)}
-                required
-                className="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-              >
-                <option value="">Select District</option>
-                <option value="Agra">Agra</option>
-                <option value="Aligarh">Aligarh</option>
-                <option value="Prayagraj">Prayagraj</option>
-                <option value="Kanpur">Kanpur</option>
-                <option value="Lucknow">Lucknow</option>
-                <option value="Meerut">Meerut</option>
-                <option value="Varanasi">Varanasi</option>
-              </select>
+              {state === '' ? (
+                <select
+                  disabled
+                  className="bg-slate-50 border border-slate-200 rounded px-3 py-2 text-slate-400 shadow-sm cursor-not-allowed"
+                >
+                  <option>Select state first</option>
+                </select>
+              ) : state === 'Other' ? (
+                <input
+                  type="text"
+                  value={otherDistrict}
+                  onChange={(e) => setOtherDistrict(e.target.value)}
+                  required
+                  placeholder="Enter district name"
+                  className="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+              ) : (
+                <>
+                  <select
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                    required
+                    className="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
+                    <option value="">Select District</option>
+                    {districtOptions.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                    <option value="Other">Other</option>
+                  </select>
+                  {district === 'Other' && (
+                    <input
+                      type="text"
+                      value={otherDistrict}
+                      onChange={(e) => setOtherDistrict(e.target.value)}
+                      required
+                      placeholder="Enter district name"
+                      className="mt-2 bg-white border border-amber-300 rounded px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  )}
+                </>
+              )}
             </div>
 
             {/* Pincode & Mobile */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 md:col-span-2">
               <div className="flex flex-col gap-1">
                 <label className="text-[13px] font-semibold text-slate-700">Pincode</label>
                 <input
                   type="text"
                   value={pincode}
-                  onChange={(e) => setPincode(e.target.value)}
+                  onChange={(e) => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   required
                   maxLength={6}
                   pattern="[0-9]{6}"
@@ -259,51 +410,105 @@ export default function DEDataEntryPage() {
                 <input
                   type="tel"
                   value={mobileNo}
-                  onChange={(e) => setMobileNo(e.target.value)}
+                  onChange={(e) => handleMobileChange(e.target.value)}
                   required
                   maxLength={10}
-                  pattern="[0-9]{10}"
-                  placeholder="10-digit"
-                  className="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm font-mono placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  placeholder="10-digit number"
+                  className={`bg-white border rounded px-3 py-2 text-slate-900 shadow-sm font-mono placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 ${mobileError ? 'border-red-400 focus:ring-red-400' : 'border-slate-300'}`}
                 />
+                {mobileError && (
+                  <span className="text-[11px] text-red-500 mt-0.5">{mobileError}</span>
+                )}
               </div>
             </div>
 
-            {/* Specimens */}
+            {/* Specimen Books */}
             <div className="flex flex-col gap-2 md:col-span-2">
               <label className="text-[13px] font-semibold text-slate-700 flex justify-between">
-                Specimens Given <span className="text-slate-500 font-normal">दिए गए नमूने</span>
+                Specimen Books Given <span className="text-slate-500 font-normal">दिए गए किताबों के नमूने</span>
               </label>
-              <div className="flex flex-wrap gap-2 border border-slate-300 bg-white rounded p-2 min-h-[48px] items-start shadow-sm focus-within:ring-2 focus-within:ring-amber-400">
-                {specimens.map((tag) => (
-                  <span key={tag} className="bg-amber-50 text-amber-800 border border-amber-200 px-2 py-1 rounded-full text-xs flex items-center gap-1 font-medium">
-                    {tag}
-                    <button type="button" onClick={() => handleRemoveTag(tag)}>
-                      <span className="material-symbols-outlined text-[12px]">close</span>
-                    </button>
-                  </span>
-                ))}
+              
+              <div className="relative">
                 <input
                   type="text"
-                  value={currentTag}
-                  onChange={(e) => setCurrentTag(e.target.value)}
-                  onKeyDown={handleAddTag}
-                  placeholder={specimens.length === 0 ? 'Type specimen name and press Enter...' : 'Add another...'}
-                  className="bg-transparent border-none focus:ring-0 text-sm w-48 p-1 text-slate-900 flex-grow placeholder:text-slate-400 outline-none"
+                  value={specimenSearch}
+                  onChange={(e) => {
+                    setSpecimenSearch(e.target.value);
+                    setShowSpecimenDropdown(true);
+                  }}
+                  onFocus={() => setShowSpecimenDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowSpecimenDropdown(false), 200)}
+                  placeholder="Search by book name or code..."
+                  className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
+                
+                {showSpecimenDropdown && filteredSpecimenBooks.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-auto">
+                    {filteredSpecimenBooks.map(book => {
+                      const displayName = getBookDisplayName(book);
+                      const isSelected = specimens.includes(displayName);
+                      return (
+                        <div
+                          key={book.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            toggleSpecimen(displayName);
+                          }}
+                          className={`px-3 py-2 cursor-pointer text-sm transition-colors ${
+                            isSelected ? 'bg-amber-50 text-amber-900' : 'hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              {book.book_code && <span className="text-[10px] font-mono text-slate-400">{book.book_code}</span>}
+                              <span>{book.name}</span>
+                            </div>
+                            {isSelected && <span className="material-symbols-outlined text-[16px] text-amber-500">check</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                
+                {showSpecimenDropdown && specimenSearch && filteredSpecimenBooks.length === 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg p-3 text-sm text-slate-500 text-center">
+                    No books found matching &quot;{specimenSearch}&quot;
+                  </div>
+                )}
               </div>
+
+              {specimens.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {specimens.map(specimen => (
+                    <div
+                      key={specimen}
+                      className="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-1 rounded-full text-xs flex items-center gap-1 font-medium shadow-sm"
+                    >
+                      {specimen}
+                      <button
+                        type="button"
+                        onClick={() => toggleSpecimen(specimen)}
+                        className="hover:text-amber-900 focus:outline-none flex items-center justify-center"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">close</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Agent */}
             <div className="flex flex-col gap-1 md:col-span-2">
-              <label className="text-[13px] font-semibold text-slate-700">Assigned Agent</label>
+              <label className="text-[13px] font-semibold text-slate-700">Assigned Representative</label>
               <select
                 value={agentName}
                 onChange={(e) => setAgentName(e.target.value)}
                 required
                 className="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
               >
-                <option value="">Select Agent</option>
+                <option value="">Select Representative</option>
                 {agents.map(a => (
                   <option key={a.id} value={a.name}>{a.name}</option>
                 ))}

@@ -26,6 +26,31 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Shared API Routes (for both DE and CRM)
+  if (
+    pathname.startsWith('/api/agents') ||
+    pathname.startsWith('/api/challans') ||
+    pathname.startsWith('/api/specimen-books')
+  ) {
+    const deToken = request.cookies.get('de_auth')?.value;
+    const crmToken = request.cookies.get('crm_auth')?.value;
+
+    let authorized = false;
+    if (deToken) {
+      const payload = await verifyCookie(deToken);
+      if (payload?.startsWith('de:')) authorized = true;
+    }
+    if (!authorized && crmToken) {
+      const payload = await verifyCookie(crmToken);
+      if (payload === 'crm') authorized = true;
+    }
+
+    if (!authorized) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+    return NextResponse.next();
+  }
+
   // Everything else = CRM (dashboard, leads, records, agents, api/*)
   const token = request.cookies.get('crm_auth')?.value;
   if (!token) return NextResponse.redirect(new URL('/login', request.url));
