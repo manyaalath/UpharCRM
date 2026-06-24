@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   const body = await request.json();
 
   if (!body.name) {
-    return NextResponse.json({ error: 'Agent name is required' }, { status: 422 });
+    return NextResponse.json({ error: 'Representative name is required' }, { status: 422 });
   }
 
   const { data, error } = await supabase
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   if (error) {
     // Unique violation constraint code
     if (error.code === '23505') {
-       return NextResponse.json({ error: 'Agent already exists' }, { status: 409 });
+       return NextResponse.json({ error: 'Representative already exists' }, { status: 409 });
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

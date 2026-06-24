@@ -4,31 +4,42 @@ import { NextResponse } from 'next/server';
 export async function GET() {
   const supabase = await createClient();
 
+  const today = new Date().toISOString().split('T')[0];
+
   const [
     { count: totalChallans },
-    { data: institutions },
     { count: totalLeads },
     { count: pendingFollowups },
-    { count: notContacted },
-    { count: thisMonth },
+    challanSpecimens,
+    districts,
   ] = await Promise.all([
     supabase.from('challans').select('*', { count: 'exact', head: true }),
-    supabase.from('challans').select('institute_name'),
     supabase.from('leads').select('*', { count: 'exact', head: true }),
-    supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'followup_pending'),
-    supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'new'),
-    supabase.from('challans').select('*', { count: 'exact', head: true })
-      .gte('challan_date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]),
+    // Pending follow-ups: pending status + overdue (date < today)
+    supabase.from('follow_ups').select('*', { count: 'exact', head: true })
+      .eq('status', 'pending'),
+    // Books distributed: count total specimens across all challans
+    supabase.from('challans').select('specimens_given'),
+    // Districts covered: unique districts
+    supabase.from('challans').select('district'),
   ]);
 
-  const uniqueInstitutions = new Set((institutions || []).map(c => c.institute_name)).size;
+  // Calculate total books distributed (sum of all specimen arrays)
+  let booksDistributed = 0;
+  (challanSpecimens.data || []).forEach(c => {
+    if (Array.isArray(c.specimens_given)) {
+      booksDistributed += c.specimens_given.length;
+    }
+  });
+
+  // Calculate unique districts
+  const uniqueDistricts = new Set((districts.data || []).map(c => c.district)).size;
 
   return NextResponse.json({
     total_challans: totalChallans || 0,
-    total_institutions: uniqueInstitutions,
     total_leads: totalLeads || 0,
-    leads_pending_followup: pendingFollowups || 0,
-    leads_not_contacted: notContacted || 0,
-    challans_this_month: thisMonth || 0,
+    pending_followups: pendingFollowups || 0,
+    books_distributed: booksDistributed,
+    districts_covered: uniqueDistricts,
   });
 }

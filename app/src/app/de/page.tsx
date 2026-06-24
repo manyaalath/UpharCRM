@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Challan } from '@/lib/types';
+import { Challan, Lead } from '@/lib/types';
 
 import { BIHAR_DISTRICTS, JHARKHAND_DISTRICTS } from '@/lib/constants';
 
@@ -13,6 +13,104 @@ function getDistrictsForState(state: string): string[] {
   return [];
 }
 
+// ── Duplicate Contact Modal ────────────────────────────────────────────────────
+function DuplicateContactModal({
+  existingLead,
+  matchType,
+  onAttach,
+  onCreateNew,
+  onCancel,
+  loading,
+}: {
+  existingLead: Lead;
+  matchType: string;
+  onAttach: () => void;
+  onCreateNew: () => void;
+  onCancel: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+        {/* Header */}
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-center gap-3">
+          <span className="material-symbols-outlined text-amber-600 text-[28px]">person_search</span>
+          <div>
+            <h3 className="text-[16px] font-bold text-amber-900">Possible Existing Lead Found</h3>
+            <p className="text-[12px] text-amber-700 mt-0.5">
+              {matchType === 'mobile' ? 'Matched by mobile number' : 'Matched by name & district'}
+            </p>
+          </div>
+        </div>
+
+        {/* Existing Lead Details */}
+        <div className="px-6 py-4 space-y-3">
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[15px] font-semibold text-slate-900">{existingLead.contact_person}</p>
+                <p className="text-[13px] text-slate-500">{existingLead.institute_name}</p>
+              </div>
+              <span className="text-[11px] font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded">{existingLead.lead_id}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
+              <div>
+                <span className="text-[11px] text-slate-500 uppercase">Mobile</span>
+                <p className="font-mono text-[13px] text-slate-900">{existingLead.mobile_no}</p>
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-500 uppercase">District</span>
+                <p className="text-[13px] text-slate-900">{existingLead.district}</p>
+              </div>
+              <div>
+                <span className="text-[11px] text-slate-500 uppercase">Status</span>
+                <p className="text-[13px] text-slate-900 capitalize">{existingLead.status.replace('_', ' ')}</p>
+              </div>
+              {existingLead.village_town && (
+                <div>
+                  <span className="text-[11px] text-slate-500 uppercase">Village/Town</span>
+                  <p className="text-[13px] text-slate-900">{existingLead.village_town}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <p className="text-[13px] text-slate-600 leading-relaxed">
+            A lead with this contact already exists. Would you like to attach this challan to the existing lead, or create a new lead?
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="px-6 pb-5 flex flex-col gap-2">
+          <button
+            onClick={onAttach}
+            disabled={loading}
+            className="w-full py-2.5 bg-amber-500 text-white rounded-lg text-[13px] font-bold hover:bg-amber-600 transition-colors shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <span className="material-symbols-outlined text-[18px]">link</span>
+            {loading ? 'Saving...' : 'Attach to Existing Lead'}
+          </button>
+          <button
+            onClick={onCreateNew}
+            disabled={loading}
+            className="w-full py-2.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-[13px] font-bold hover:bg-slate-50 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <span className="material-symbols-outlined text-[18px]">person_add</span>
+            {loading ? 'Saving...' : 'Create New Lead'}
+          </button>
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="w-full py-2 text-[12px] text-slate-500 hover:text-slate-700 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 export default function DEDataEntryPage() {
   const [loading, setLoading] = useState(false);
@@ -22,12 +120,22 @@ export default function DEDataEntryPage() {
   const [recentEntries, setRecentEntries] = useState<Challan[]>([]);
   const [specimenBooks, setSpecimenBooks] = useState<{ id: string; name: string; book_code: string | null }[]>([]);
 
+  // Duplicate detection state
+  const [duplicateModal, setDuplicateModal] = useState<{
+    existingLead: Lead;
+    matchType: string;
+  } | null>(null);
+  const [pendingSubmission, setPendingSubmission] = useState<Record<string, unknown> | null>(null);
+  const [duplicateLoading, setDuplicateLoading] = useState(false);
+
   // Form state
   const [challanNo, setChallanNo] = useState('');
   const [challanDate, setChallanDate] = useState(new Date().toISOString().split('T')[0]);
   const [teacherName, setTeacherName] = useState('');
   const [instituteName, setInstituteName] = useState('');
   const [address, setAddress] = useState('');
+  const [villageTown, setVillageTown] = useState('');
+  const [locality, setLocality] = useState('');
   const [state, setState] = useState('');
   const [otherState, setOtherState] = useState('');
   const [district, setDistrict] = useState('');
@@ -124,6 +232,8 @@ export default function DEDataEntryPage() {
     setTeacherName('');
     setInstituteName('');
     setAddress('');
+    setVillageTown('');
+    setLocality('');
     setState('');
     setOtherState('');
     setDistrict('');
@@ -135,6 +245,27 @@ export default function DEDataEntryPage() {
     setSpecimens([]);
     setError(null);
     setSuccess(false);
+    setDuplicateModal(null);
+    setPendingSubmission(null);
+  };
+
+  const buildPayload = (confirmAction?: string, existingLeadId?: string) => {
+    return {
+      challan_no: challanNo,
+      challan_date: challanDate,
+      teacher_name: teacherName,
+      institute_name: instituteName,
+      address,
+      village_town: villageTown || null,
+      locality: locality || null,
+      district: effectiveDistrict,
+      pincode,
+      mobile_no: mobileNo,
+      specimens_given: specimens,
+      agent_name: agentName,
+      ...(confirmAction && { confirm_action: confirmAction }),
+      ...(existingLeadId && { existing_lead_id: existingLeadId }),
+    };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -166,24 +297,26 @@ export default function DEDataEntryPage() {
     setSuccess(false);
 
     try {
+      const payload = buildPayload();
       const res = await fetch('/api/challans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          challan_no: challanNo,
-          challan_date: challanDate,
-          teacher_name: teacherName,
-          institute_name: instituteName,
-          address,
-          district: effectiveDistrict,
-          pincode,
-          mobile_no: mobileNo,
-          specimens_given: specimens,
-          agent_name: agentName,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
+
+      // Handle duplicate detection response
+      if (data.duplicate_found) {
+        setDuplicateModal({
+          existingLead: data.existing_lead,
+          matchType: data.match_type,
+        });
+        setPendingSubmission(payload);
+        setLoading(false);
+        return;
+      }
+
       if (!res.ok) throw new Error(data.error || 'Failed to save record');
 
       setSuccess(true);
@@ -196,7 +329,45 @@ export default function DEDataEntryPage() {
     }
   };
 
+  const handleDuplicateAction = async (action: 'attach_to_lead' | 'create_new') => {
+    if (!pendingSubmission || !duplicateModal) return;
+
+    setDuplicateLoading(true);
+    setError(null);
+
+    try {
+      const payload = buildPayload(
+        action,
+        action === 'attach_to_lead' ? duplicateModal.existingLead.id : undefined,
+      );
+
+      const res = await fetch('/api/challans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save record');
+
+      setSuccess(true);
+      setDuplicateModal(null);
+      setPendingSubmission(null);
+      fetchRecentEntries();
+      setChallanNo('');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      setDuplicateModal(null);
+      setPendingSubmission(null);
+    } finally {
+      setDuplicateLoading(false);
+    }
+  };
+
   const districtOptions = getDistrictsForState(state);
+
+  // Suppress warning about unused effectiveState
+  void effectiveState;
 
   return (
     <div className="flex-grow flex flex-col items-center pb-10 pt-6 px-4 w-full max-w-full">
@@ -293,6 +464,34 @@ export default function DEDataEntryPage() {
                 rows={2}
                 placeholder="Street address, block, etc."
                 className="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+
+            {/* Village/Town */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[13px] font-semibold text-slate-700 flex justify-between">
+                Village / Town <span className="text-slate-500 font-normal">गाँव / शहर</span>
+              </label>
+              <input
+                type="text"
+                value={villageTown}
+                onChange={(e) => setVillageTown(e.target.value)}
+                placeholder="Enter village or town"
+                className="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+            </div>
+
+            {/* Locality */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[13px] font-semibold text-slate-700 flex justify-between">
+                Locality <span className="text-slate-500 font-normal">मोहल्ला</span>
+              </label>
+              <input
+                type="text"
+                value={locality}
+                onChange={(e) => setLocality(e.target.value)}
+                placeholder="Enter locality"
+                className="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
               />
             </div>
 
@@ -482,7 +681,7 @@ export default function DEDataEntryPage() {
               )}
             </div>
 
-            {/* Agent */}
+            {/* Representative */}
             <div className="flex flex-col gap-1 md:col-span-2">
               <label className="text-[13px] font-semibold text-slate-700">Assigned Representative</label>
               <select
@@ -548,6 +747,18 @@ export default function DEDataEntryPage() {
           </div>
         </div>
       </div>
+
+      {/* Duplicate Contact Modal */}
+      {duplicateModal && (
+        <DuplicateContactModal
+          existingLead={duplicateModal.existingLead}
+          matchType={duplicateModal.matchType}
+          onAttach={() => handleDuplicateAction('attach_to_lead')}
+          onCreateNew={() => handleDuplicateAction('create_new')}
+          onCancel={() => { setDuplicateModal(null); setPendingSubmission(null); }}
+          loading={duplicateLoading}
+        />
+      )}
     </div>
   );
 }

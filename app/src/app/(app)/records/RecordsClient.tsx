@@ -57,6 +57,7 @@ export default function RecordsClient({ initialData, totalCount }: { initialData
                 <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap">Date</th>
                 <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap">Name</th>
                 <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap">Institute</th>
+                <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap">Village/Town</th>
                 <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap">District</th>
                 <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap text-right">Actions</th>
               </tr>
@@ -68,6 +69,7 @@ export default function RecordsClient({ initialData, totalCount }: { initialData
                   <td className="py-1 px-4 text-[14px] text-slate-900">{challan.challan_date}</td>
                   <td className="py-1 px-4 text-[14px] text-slate-900">{challan.teacher_name}</td>
                   <td className="py-1 px-4 text-[14px] text-slate-900">{challan.institute_name}</td>
+                  <td className="py-1 px-4 text-[14px] text-slate-500">{challan.village_town || '-'}</td>
                   <td className="py-1 px-4 text-[14px] text-slate-900">{challan.district}</td>
                   <td className="py-1 px-4 text-right">
                     <button className="text-[#1E40AF] hover:text-blue-800">
@@ -78,7 +80,7 @@ export default function RecordsClient({ initialData, totalCount }: { initialData
               ))}
               {challans.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500 text-sm">No records found.</td>
+                  <td colSpan={7} className="py-8 text-center text-slate-500 text-sm">No records found.</td>
                 </tr>
               )}
             </tbody>

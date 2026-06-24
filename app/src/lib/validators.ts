@@ -36,6 +36,16 @@ export function validateChallan(data: Record<string, unknown>): ValidationResult
     fields.address = 'Address must be under 500 characters';
   }
 
+  // village_town is optional but validate length if provided
+  if (data.village_town && String(data.village_town).length > 255) {
+    fields.village_town = 'Village/Town must be under 255 characters';
+  }
+
+  // locality is optional but validate length if provided
+  if (data.locality && String(data.locality).length > 255) {
+    fields.locality = 'Locality must be under 255 characters';
+  }
+
   if (!data.district || String(data.district).trim() === '') {
     fields.district = 'District is required';
   } else if (String(data.district).length > 100) {
@@ -64,9 +74,9 @@ export function validateChallan(data: Record<string, unknown>): ValidationResult
   }
 
   if (!data.agent_name || String(data.agent_name).trim() === '') {
-    fields.agent_name = 'Agent name is required';
+    fields.agent_name = 'Representative name is required';
   } else if (String(data.agent_name).length > 100) {
-    fields.agent_name = 'Agent name must be under 100 characters';
+    fields.agent_name = 'Representative name must be under 100 characters';
   }
 
   return {

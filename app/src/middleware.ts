@@ -30,7 +30,12 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith('/api/agents') ||
     pathname.startsWith('/api/challans') ||
-    pathname.startsWith('/api/specimen-books')
+    pathname.startsWith('/api/specimen-books') ||
+    pathname.startsWith('/api/leads') ||
+    pathname.startsWith('/api/follow-ups') ||
+    pathname.startsWith('/api/call-feedback') ||
+    pathname.startsWith('/api/lead-activities') ||
+    pathname.startsWith('/api/analytics')
   ) {
     const deToken = request.cookies.get('de_auth')?.value;
     const crmToken = request.cookies.get('crm_auth')?.value;

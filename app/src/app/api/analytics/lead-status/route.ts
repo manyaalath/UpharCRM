@@ -10,6 +10,8 @@ export async function GET() {
 
   const statusCounts: Record<string, number> = {};
   (leads || []).forEach(l => {
+    // Skip 'converted' status (removed from PRD)
+    if (l.status === 'converted') return;
     statusCounts[l.status] = (statusCounts[l.status] || 0) + 1;
   });
 
