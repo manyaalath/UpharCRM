@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { FOLLOWUP_STATUS_COLORS } from '@/lib/types';
 
 // ── Types ──
@@ -22,6 +22,8 @@ interface FollowUpItem {
   followup_date: string;
   status: string;
   remarks: string | null;
+  assigned_rep: string | null;
+  completed_date: string | null;
   created_at: string;
   updated_at: string;
   lead: FollowUpLead;
@@ -49,6 +51,36 @@ const TAB_STYLES: Record<TabId, { headerBg: string; headerBorder: string; header
   upcoming: { headerBg: 'bg-blue-50', headerBorder: 'border-blue-200', headerText: 'text-blue-800', badge: 'bg-blue-500', badgeText: 'text-white' },
   completed: { headerBg: 'bg-green-50', headerBorder: 'border-green-200', headerText: 'text-green-800', badge: 'bg-green-500', badgeText: 'text-white' },
 };
+
+// ── Loading Skeleton ──
+function FollowUpsSkeleton() {
+  return (
+    <div className="flex-1 p-4 md:p-6 pb-24 md:pb-6 w-full max-w-[1200px] mx-auto animate-pulse">
+      <div className="mb-6">
+        <div className="h-8 w-40 bg-slate-200 rounded mb-2" />
+        <div className="h-[2px] w-[120px] bg-slate-200" />
+      </div>
+      <div className="flex gap-1 mb-6">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="h-10 w-28 bg-slate-200 rounded-lg" />
+        ))}
+      </div>
+      <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
+        <div className="p-4 border-b border-slate-200 bg-slate-50">
+          <div className="h-5 w-24 bg-slate-200 rounded" />
+        </div>
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="p-4 border-b border-slate-100 flex gap-4">
+            <div className="h-4 w-32 bg-slate-200 rounded" />
+            <div className="h-4 w-40 bg-slate-200 rounded" />
+            <div className="h-4 w-24 bg-slate-200 rounded" />
+            <div className="h-4 w-20 bg-slate-200 rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ── Reschedule Modal ──
 function RescheduleModal({
@@ -124,19 +156,79 @@ function RescheduleModal({
 }
 
 // ── Main Component ──
-export default function FollowUpsClient({ data }: { data: FollowUpData }) {
-  // Default to overdue tab if there are overdue items, otherwise due_today
-  const defaultTab: TabId = data.overdue.length > 0 ? 'overdue' : 'due_today';
-  const [activeTab, setActiveTab] = useState<TabId>(defaultTab);
-  const [followUps, setFollowUps] = useState<FollowUpData>(data);
+export default function FollowUpsClient() {
+  const [followUps, setFollowUps] = useState<FollowUpData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>('due_today');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<FollowUpItem | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const channelRef = useRef<BroadcastChannel | null>(null);
 
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 3000);
   };
+
+  const fetchFollowUps = useCallback(async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const twoWeeksOut = new Date();
+      twoWeeksOut.setDate(twoWeeksOut.getDate() + 14);
+
+      const [dueTodayRes, overdueRes, upcomingRes, completedRes] = await Promise.all([
+        fetch(`/api/follow-ups?queue=due_today`),
+        fetch(`/api/follow-ups?queue=overdue`),
+        fetch(`/api/follow-ups?queue=upcoming`),
+        fetch(`/api/follow-ups?queue=completed`),
+      ]);
+
+      const [dueTodayData, overdueData, upcomingData, completedData] = await Promise.all([
+        dueTodayRes.json(),
+        overdueRes.json(),
+        upcomingRes.json(),
+        completedRes.json(),
+      ]);
+
+      const data: FollowUpData = {
+        dueToday: dueTodayData.data || [],
+        overdue: overdueData.data || [],
+        upcoming: upcomingData.data || [],
+        completed: completedData.data || [],
+      };
+
+      setFollowUps(data);
+      setError(null);
+
+      // Auto-select tab: overdue first if items exist, then due_today
+      if (!followUps) {
+        if (data.overdue.length > 0) setActiveTab('overdue');
+        else if (data.dueToday.length > 0) setActiveTab('due_today');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load follow-ups');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchFollowUps();
+  }, [fetchFollowUps]);
+
+  // BroadcastChannel listener for cross-tab refresh (when challan is inserted)
+  useEffect(() => {
+    try {
+      const channel = new BroadcastChannel('dashboard-refresh');
+      channelRef.current = channel;
+      channel.onmessage = () => { fetchFollowUps(); };
+      return () => { channel.close(); channelRef.current = null; };
+    } catch {
+      // BroadcastChannel not supported
+    }
+  }, [fetchFollowUps]);
 
   const handleMarkComplete = async (item: FollowUpItem) => {
     setActionLoading(item.id);
@@ -154,7 +246,8 @@ export default function FollowUpsClient({ data }: { data: FollowUpData }) {
 
       // Move item from current list to completed
       setFollowUps(prev => {
-        const updatedItem = { ...item, status: 'completed', updated_at: new Date().toISOString() };
+        if (!prev) return prev;
+        const updatedItem = { ...item, status: 'completed', completed_date: new Date().toISOString().split('T')[0], updated_at: new Date().toISOString() };
         return {
           dueToday: prev.dueToday.filter(f => f.id !== item.id),
           overdue: prev.overdue.filter(f => f.id !== item.id),
@@ -163,6 +256,13 @@ export default function FollowUpsClient({ data }: { data: FollowUpData }) {
         };
       });
       showNotification('success', `Follow-up for ${item.lead?.contact_person} marked complete`);
+
+      // Notify dashboard
+      try {
+        const bc = new BroadcastChannel('dashboard-refresh');
+        bc.postMessage('refresh');
+        bc.close();
+      } catch { /* ignore */ }
     } catch {
       showNotification('error', 'Failed to update follow-up');
     } finally {
@@ -189,22 +289,58 @@ export default function FollowUpsClient({ data }: { data: FollowUpData }) {
 
       // Remove from old list, add to upcoming
       const updatedItem = { ...rescheduleTarget, followup_date: newDate, status: 'pending', remarks: remarks || rescheduleTarget.remarks };
-      setFollowUps(prev => ({
-        dueToday: prev.dueToday.filter(f => f.id !== rescheduleTarget.id),
-        overdue: prev.overdue.filter(f => f.id !== rescheduleTarget.id),
-        upcoming: [...prev.upcoming.filter(f => f.id !== rescheduleTarget.id), updatedItem].sort(
-          (a, b) => a.followup_date.localeCompare(b.followup_date)
-        ),
-        completed: prev.completed,
-      }));
+      setFollowUps(prev => {
+        if (!prev) return prev;
+        return {
+          dueToday: prev.dueToday.filter(f => f.id !== rescheduleTarget.id),
+          overdue: prev.overdue.filter(f => f.id !== rescheduleTarget.id),
+          upcoming: [...prev.upcoming.filter(f => f.id !== rescheduleTarget.id), updatedItem].sort(
+            (a, b) => a.followup_date.localeCompare(b.followup_date)
+          ),
+          completed: prev.completed,
+        };
+      });
       showNotification('success', `Follow-up rescheduled to ${newDate}`);
       setRescheduleTarget(null);
+
+      // Notify dashboard
+      try {
+        const bc = new BroadcastChannel('dashboard-refresh');
+        bc.postMessage('refresh');
+        bc.close();
+      } catch { /* ignore */ }
     } catch {
       showNotification('error', 'Failed to reschedule follow-up');
     } finally {
       setActionLoading(null);
     }
   };
+
+  // ── Loading State ──
+  if (loading && !followUps) {
+    return <FollowUpsSkeleton />;
+  }
+
+  // ── Error State ──
+  if (error && !followUps) {
+    return (
+      <div className="flex-1 p-4 md:p-6 pb-24 md:pb-6 w-full max-w-[1200px] mx-auto flex items-center justify-center min-h-[400px]">
+        <div className="bg-white rounded-lg shadow-sm border border-red-200 p-8 max-w-md w-full text-center">
+          <span className="material-symbols-outlined text-[48px] text-red-400 mb-3 block">error</span>
+          <h3 className="text-[18px] font-bold text-slate-900 mb-2">Failed to Load Follow-Ups</h3>
+          <p className="text-[14px] text-slate-500 mb-6">{error}</p>
+          <button
+            onClick={() => { setLoading(true); setError(null); fetchFollowUps(); }}
+            className="px-6 py-2.5 bg-[#1E40AF] text-white rounded-lg text-[13px] font-bold hover:bg-[#1E3A8A] transition-colors shadow-md"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!followUps) return null;
 
   const getItemsForTab = (tab: TabId): FollowUpItem[] => {
     switch (tab) {
@@ -271,6 +407,14 @@ export default function FollowUpsClient({ data }: { data: FollowUpData }) {
                 <span className="text-[12px] font-bold text-red-700">{followUps.overdue.length} Overdue</span>
               </div>
             )}
+            <button
+              onClick={() => { setLoading(true); fetchFollowUps(); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 text-[12px] font-semibold hover:bg-slate-50 transition-colors"
+              title="Refresh"
+            >
+              <span className="material-symbols-outlined text-[16px]">refresh</span>
+              Refresh
+            </button>
           </div>
         </div>
       </header>
@@ -332,6 +476,7 @@ export default function FollowUpsClient({ data }: { data: FollowUpData }) {
                   <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Institute</th>
                   <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">District</th>
                   <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Due Date</th>
+                  <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Rep</th>
                   <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                   <th className="py-3 px-4 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Phone</th>
                   {activeTab !== 'completed' && (
@@ -371,6 +516,7 @@ export default function FollowUpsClient({ data }: { data: FollowUpData }) {
                           {getDaysLabel(item.followup_date)}
                         </div>
                       </td>
+                      <td className="py-3 px-4 text-[12px] text-slate-600">{item.assigned_rep || '-'}</td>
                       <td className="py-3 px-4">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${statusColors.bg} ${statusColors.text} border ${statusColors.border}`}>
                           {item.status.replace('_', ' ')}

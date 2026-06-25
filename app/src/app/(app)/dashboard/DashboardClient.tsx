@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // ── Types ──
@@ -34,6 +34,7 @@ interface DashboardData {
     due_today: FollowUpItem[];
     overdue: FollowUpItem[];
     upcoming: FollowUpItem[];
+    completed: FollowUpItem[];
   };
   leadIntelligence: {
     topInstitutions: { name: string; count: number; district: string; last_visit: string }[];
@@ -58,6 +59,8 @@ const STATUS_COLORS: Record<string, string> = {
 };
 const CHART_COLORS = ['#1E40AF', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6', '#EC4899'];
 
+const AUTO_REFRESH_INTERVAL = 60_000; // 60 seconds
+
 function ScoreBar({ score }: { score: number }) {
   const color = score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444';
   return (
@@ -70,18 +73,155 @@ function ScoreBar({ score }: { score: number }) {
   );
 }
 
-export default function DashboardClient({ data }: { data: DashboardData }) {
-  const [activeTab, setActiveTab] = useState('overview');
-  const { summary, districtData, bookData, representativeData, followUpQueue, leadIntelligence, leadStatusData } = data;
+// ── Loading Skeleton ──
+function DashboardSkeleton() {
+  return (
+    <div className="flex-1 p-4 md:p-6 pb-24 md:pb-6 w-full max-w-[1600px] mx-auto animate-pulse">
+      <div className="mb-6">
+        <div className="h-8 w-48 bg-slate-200 rounded mb-2" />
+        <div className="h-[2px] w-[200px] bg-slate-200" />
+      </div>
+      <div className="flex gap-1 mb-6">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="h-9 w-28 bg-slate-200 rounded-lg" />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 min-h-[110px]">
+            <div className="flex items-center justify-between mb-4">
+              <div className="h-3 w-20 bg-slate-200 rounded" />
+              <div className="h-5 w-5 bg-slate-200 rounded" />
+            </div>
+            <div className="h-8 w-16 bg-slate-200 rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 col-span-1 lg:col-span-2 h-[280px]">
+          <div className="h-4 w-48 bg-slate-200 rounded mb-4" />
+          <div className="h-[220px] bg-slate-100 rounded" />
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 h-[280px]">
+          <div className="h-4 w-28 bg-slate-200 rounded mb-4" />
+          <div className="h-[180px] bg-slate-100 rounded-full w-[180px] mx-auto" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
+export default function DashboardClient() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+
+  const fetchData = useCallback(async (isManualRefresh = false) => {
+    if (isManualRefresh) {
+      setIsRefreshing(true);
+    }
+    try {
+      const res = await fetch('/api/dashboard');
+      if (!res.ok) throw new Error('Failed to fetch dashboard data');
+      const json = await res.json();
+      setData(json);
+      setError(null);
+      setLastRefresh(new Date());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  // Initial fetch + auto-refresh interval
+  useEffect(() => {
+    fetchData();
+
+    const interval = setInterval(() => {
+      fetchData();
+    }, AUTO_REFRESH_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  // BroadcastChannel listener for cross-tab refresh
+  useEffect(() => {
+    try {
+      const channel = new BroadcastChannel('dashboard-refresh');
+      channelRef.current = channel;
+
+      channel.onmessage = () => {
+        fetchData();
+      };
+
+      return () => {
+        channel.close();
+        channelRef.current = null;
+      };
+    } catch {
+      // BroadcastChannel not supported — fall back to interval only
+    }
+  }, [fetchData]);
+
+  // ── Loading State ──
+  if (loading && !data) {
+    return <DashboardSkeleton />;
+  }
+
+  // ── Error State ──
+  if (error && !data) {
+    return (
+      <div className="flex-1 p-4 md:p-6 pb-24 md:pb-6 w-full max-w-[1600px] mx-auto flex items-center justify-center min-h-[400px]">
+        <div className="bg-white rounded-lg shadow-sm border border-red-200 p-8 max-w-md w-full text-center">
+          <span className="material-symbols-outlined text-[48px] text-red-400 mb-3 block">error</span>
+          <h3 className="text-[18px] font-bold text-slate-900 mb-2">Failed to Load Dashboard</h3>
+          <p className="text-[14px] text-slate-500 mb-6">{error}</p>
+          <button
+            onClick={() => { setLoading(true); setError(null); fetchData(); }}
+            className="px-6 py-2.5 bg-[#1E40AF] text-white rounded-lg text-[13px] font-bold hover:bg-[#1E3A8A] transition-colors shadow-md"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const { summary, districtData, bookData, representativeData, followUpQueue, leadIntelligence, leadStatusData } = data;
   const totalFollowUpItems = followUpQueue.due_today.length + followUpQueue.overdue.length + followUpQueue.upcoming.length;
 
   return (
     <div className="flex-1 p-4 md:p-6 pb-24 md:pb-6 w-full max-w-[1600px] mx-auto">
       {/* Page Header */}
-      <header className="mb-6">
-        <h2 className="text-[28px] md:text-[32px] font-bold text-slate-900 tracking-tight">Dashboard</h2>
-        <hr className="border-0 h-[2px] bg-[#1E40AF] w-full max-w-[200px] mt-1" />
+      <header className="mb-6 flex items-center justify-between">
+        <div>
+          <h2 className="text-[28px] md:text-[32px] font-bold text-slate-900 tracking-tight">Dashboard</h2>
+          <hr className="border-0 h-[2px] bg-[#1E40AF] w-full max-w-[200px] mt-1" />
+        </div>
+        <div className="flex items-center gap-3">
+          {lastRefresh && (
+            <span className="text-[11px] text-slate-400 hidden md:block">
+              Updated {lastRefresh.toLocaleTimeString()}
+            </span>
+          )}
+          <button
+            onClick={() => fetchData(true)}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 text-[12px] font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50"
+            title="Refresh dashboard data"
+          >
+            <span className={`material-symbols-outlined text-[16px] ${isRefreshing ? 'animate-spin' : ''}`}>refresh</span>
+            Refresh
+          </button>
+        </div>
       </header>
 
       {/* Section Tabs */}
@@ -323,6 +463,16 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
             </div>
             <FollowUpTable items={followUpQueue.upcoming} variant="upcoming" />
           </div>
+          {/* Completed */}
+          {followUpQueue.completed.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm border border-green-200 overflow-hidden">
+              <div className="p-3 border-b border-green-100 bg-green-50 flex items-center justify-between">
+                <div className="flex items-center gap-2"><span className="material-symbols-outlined text-green-600 text-[18px]">task_alt</span><h3 className="text-[14px] font-bold text-green-800">Completed</h3></div>
+                <span className="bg-green-500 text-white text-[11px] px-2 py-0.5 rounded-full font-bold">{followUpQueue.completed.length}</span>
+              </div>
+              <FollowUpTable items={followUpQueue.completed} variant="upcoming" />
+            </div>
+          )}
         </div>
       )}
 

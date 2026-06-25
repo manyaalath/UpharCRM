@@ -117,10 +117,13 @@ export const FOLLOWUP_STATUS_COLORS: Record<FollowUpStatus, { bg: string; text: 
 export interface FollowUp {
   id: string;
   lead_id: string;
+  challan_id: string | null;
   challan_no: string | null;
+  assigned_rep: string | null;
   followup_date: string;
   status: FollowUpStatus;
   remarks: string | null;
+  completed_date: string | null;
   created_at: string;
   updated_at: string;
   // Joined fields (from lead)

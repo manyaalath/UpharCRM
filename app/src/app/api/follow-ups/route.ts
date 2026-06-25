@@ -7,14 +7,23 @@ export async function GET(request: Request) {
 
   const leadId = searchParams.get('lead_id');
   const status = searchParams.get('status'); // pending, overdue, completed, rescheduled
-  const queue = searchParams.get('queue'); // due_today, overdue, upcoming
+  const queue = searchParams.get('queue'); // due_today, overdue, upcoming, completed
+
+  const today = new Date().toISOString().split('T')[0];
+
+  // ── Auto-mark overdue: update any past-due pending follow-ups ──
+  await supabase
+    .from('follow_ups')
+    .update({ status: 'overdue' })
+    .lt('followup_date', today)
+    .eq('status', 'pending');
 
   let query = supabase
     .from('follow_ups')
     .select(`
       *,
       lead:leads!lead_id (
-        id, lead_id, contact_person, institute_name, district, mobile_no, status
+        id, lead_id, contact_person, institute_name, district, mobile_no, status, village_town, agent_name
       )
     `)
     .order('followup_date', { ascending: true });
@@ -22,14 +31,14 @@ export async function GET(request: Request) {
   if (leadId) query = query.eq('lead_id', leadId);
   if (status) query = query.eq('status', status);
 
-  const today = new Date().toISOString().split('T')[0];
-
   if (queue === 'due_today') {
-    query = query.eq('followup_date', today).eq('status', 'pending');
+    query = query.eq('followup_date', today).in('status', ['pending', 'overdue']);
   } else if (queue === 'overdue') {
-    query = query.lt('followup_date', today).eq('status', 'pending');
+    query = query.lt('followup_date', today).in('status', ['pending', 'overdue']);
   } else if (queue === 'upcoming') {
     query = query.gt('followup_date', today).eq('status', 'pending');
+  } else if (queue === 'completed') {
+    query = query.eq('status', 'completed').order('completed_date', { ascending: false });
   }
 
   const { data, error } = await query.limit(50);
@@ -51,7 +60,9 @@ export async function POST(request: Request) {
     .from('follow_ups')
     .insert([{
       lead_id: body.lead_id,
+      challan_id: body.challan_id || null,
       challan_no: body.challan_no || null,
+      assigned_rep: body.assigned_rep || null,
       followup_date: body.followup_date,
       status: 'pending',
       remarks: body.remarks || null,
@@ -84,6 +95,18 @@ export async function PUT(request: Request) {
   if (body.status) updates.status = body.status;
   if (body.followup_date) updates.followup_date = body.followup_date;
   if (body.remarks !== undefined) updates.remarks = body.remarks;
+  if (body.assigned_rep !== undefined) updates.assigned_rep = body.assigned_rep;
+
+  // Set completed_date when marking as completed
+  if (body.status === 'completed') {
+    updates.completed_date = new Date().toISOString().split('T')[0];
+  }
+
+  // When rescheduling, reset status to pending and clear completed_date
+  if (body.status === 'rescheduled') {
+    updates.status = 'pending';
+    updates.completed_date = null;
+  }
 
   const { data, error } = await supabase
     .from('follow_ups')
@@ -99,9 +122,9 @@ export async function PUT(request: Request) {
     const statusLabel = body.status === 'completed' ? 'completed' : body.status === 'rescheduled' ? 'rescheduled' : body.status;
     await supabase.from('lead_activities').insert([{
       lead_id: body.lead_id,
-      activity_type: 'followup_created',
+      activity_type: body.status === 'completed' ? 'followup_completed' : 'followup_rescheduled',
       description: `Follow-up ${statusLabel}${body.followup_date ? ` to ${body.followup_date}` : ''}`,
-      metadata: { followup_id: body.id, new_status: body.status },
+      metadata: { followup_id: body.id, new_status: body.status, ...(body.followup_date && { new_date: body.followup_date }) },
     }]);
   }
 

@@ -182,6 +182,17 @@ export default function DEDataEntryPage() {
     }
   };
 
+  // Notify any open dashboard tab to refresh its data
+  const notifyDashboardRefresh = () => {
+    try {
+      const channel = new BroadcastChannel('dashboard-refresh');
+      channel.postMessage('refresh');
+      channel.close();
+    } catch {
+      // BroadcastChannel not supported — dashboard will refresh on its own interval
+    }
+  };
+
   const fetchSpecimenBooks = async () => {
     try {
       const res = await fetch('/api/specimen-books');
@@ -321,6 +332,7 @@ export default function DEDataEntryPage() {
 
       setSuccess(true);
       fetchRecentEntries();
+      notifyDashboardRefresh();
       setChallanNo('');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -354,6 +366,7 @@ export default function DEDataEntryPage() {
       setDuplicateModal(null);
       setPendingSubmission(null);
       fetchRecentEntries();
+      notifyDashboardRefresh();
       setChallanNo('');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred');

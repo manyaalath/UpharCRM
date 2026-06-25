@@ -192,13 +192,16 @@ export async function POST(request: Request) {
       }]);
     }
 
-    // ── Auto-create follow-up (15 days from now) ──
-    const followupDate = new Date();
+    // ── Auto-create follow-up (15 days from challan date) ──
+    const challanDateObj = new Date(body.challan_date);
+    const followupDate = new Date(challanDateObj);
     followupDate.setDate(followupDate.getDate() + 15);
 
     await supabase.from('follow_ups').insert([{
       lead_id: leadId,
+      challan_id: data.id,
       challan_no: body.challan_no,
+      assigned_rep: body.agent_name,
       followup_date: followupDate.toISOString().split('T')[0],
       status: 'pending',
       remarks: 'Auto-created on challan entry',
