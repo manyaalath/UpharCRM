@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import DashboardAiSummary from './DashboardAiSummary';
 
 // ── Types ──
 interface FollowUpLead {
@@ -199,12 +200,15 @@ export default function DashboardClient() {
   const totalFollowUpItems = followUpQueue.due_today.length + followUpQueue.overdue.length + followUpQueue.upcoming.length;
 
   return (
-    <div className="flex-1 p-4 md:p-6 pb-24 md:pb-6 w-full max-w-[1600px] mx-auto">
-      {/* Page Header */}
-      <header className="mb-6 flex items-center justify-between">
+    <div className="p-4 md:p-6 max-w-[1600px] mx-auto w-full pb-20">
+      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
         <div>
-          <h2 className="text-[28px] md:text-[32px] font-bold text-slate-900 tracking-tight">Dashboard</h2>
-          <hr className="border-0 h-[2px] bg-[#1E40AF] w-full max-w-[200px] mt-1" />
+          <h1 className="text-[28px] md:text-[32px] font-bold text-slate-900 tracking-tight">Dashboard Overview</h1>
+          <hr className="border-0 h-[2px] bg-[#1E40AF] w-full max-w-[100px] mt-1" />
+        </div>
+        <div className="flex items-center gap-4 text-[13px] text-slate-600 font-medium">
+          <span className="material-symbols-outlined text-[18px]">calendar_today</span>
+          {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </div>
         <div className="flex items-center gap-3">
           {lastRefresh && (
@@ -222,7 +226,7 @@ export default function DashboardClient() {
             Refresh
           </button>
         </div>
-      </header>
+      </div>
 
       {/* Section Tabs */}
       <div className="flex gap-1 mb-6 overflow-x-auto pb-1 scrollbar-none">
@@ -248,22 +252,34 @@ export default function DashboardClient() {
       {/* ═══════════════════════ Section A: Overview ═══════════════════════ */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
+          <DashboardAiSummary />
           {/* KPI Cards */}
           <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             {[
-              { label: 'Total Challans', value: summary.total_challans, icon: 'receipt_long', color: '#1E40AF' },
-              { label: 'Leads', value: summary.total_leads, icon: 'people', color: '#7C3AED' },
-              { label: 'Pending Follow-Ups', value: summary.pending_followups, icon: 'pending_actions', color: '#F59E0B' },
+              { label: 'Total Challans', value: summary.total_challans, icon: 'receipt_long', color: '#1E40AF', href: '/records' },
+              { label: 'Leads', value: summary.total_leads, icon: 'people', color: '#7C3AED', href: '/leads' },
+              { label: 'Pending Follow-Ups', value: summary.pending_followups, icon: 'pending_actions', color: '#F59E0B', href: '/leads' }, // Routing to leads page for now
               { label: 'Books Distributed', value: summary.books_distributed, icon: 'menu_book', color: '#10B981' },
               { label: 'Districts Covered', value: summary.districts_covered, icon: 'location_on', color: '#EC4899' },
             ].map(kpi => (
-              <div key={kpi.label} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col justify-between min-h-[110px]" style={{ borderTopColor: kpi.color, borderTopWidth: '3px' }}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider leading-tight">{kpi.label}</span>
-                  <span className="material-symbols-outlined text-[20px]" style={{ color: kpi.color }}>{kpi.icon}</span>
+              kpi.href ? (
+                <a key={kpi.label} href={kpi.href} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col justify-between min-h-[110px] hover:shadow-md hover:bg-slate-50 transition-all cursor-pointer relative overflow-hidden group" style={{ borderTopColor: kpi.color, borderTopWidth: '3px' }}>
+                  <div className="absolute inset-0 opacity-0 group-hover:opacity-5 transition-opacity" style={{ backgroundColor: kpi.color }} />
+                  <div className="flex items-center justify-between z-10">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider leading-tight group-hover:text-slate-700 transition-colors">{kpi.label}</span>
+                    <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform" style={{ color: kpi.color }}>{kpi.icon}</span>
+                  </div>
+                  <span className="font-mono text-[28px] font-bold text-slate-900 z-10">{kpi.value.toLocaleString()}</span>
+                </a>
+              ) : (
+                <div key={kpi.label} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col justify-between min-h-[110px]" style={{ borderTopColor: kpi.color, borderTopWidth: '3px' }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider leading-tight">{kpi.label}</span>
+                    <span className="material-symbols-outlined text-[20px]" style={{ color: kpi.color }}>{kpi.icon}</span>
+                  </div>
+                  <span className="font-mono text-[28px] font-bold text-slate-900">{kpi.value.toLocaleString()}</span>
                 </div>
-                <span className="font-mono text-[28px] font-bold text-slate-900">{kpi.value.toLocaleString()}</span>
-              </div>
+              )
             ))}
           </section>
 
@@ -272,15 +288,22 @@ export default function DashboardClient() {
             {/* District Distribution (mini) */}
             <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 col-span-1 lg:col-span-2 flex flex-col min-h-[280px]">
               <h3 className="text-[16px] font-semibold text-slate-900 mb-3">District-wise Distribution</h3>
-              <div className="flex-1 w-full h-[220px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={districtData.slice(0, 8)}>
-                    <XAxis dataKey="district" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <Tooltip cursor={{ fill: '#F1F5F9' }} />
-                    <Bar dataKey="challan_count" fill="#1E40AF" radius={[4, 4, 0, 0]} name="Challans" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="flex-1 w-full h-[220px] flex items-center justify-center">
+                {districtData.length === 0 ? (
+                  <div className="text-center text-slate-400">
+                    <span className="material-symbols-outlined text-[32px] block mb-2 opacity-50">bar_chart</span>
+                    <p className="text-[13px]">No data available</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={districtData.slice(0, 8)}>
+                      <XAxis dataKey="district" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <Tooltip cursor={{ fill: '#F1F5F9' }} />
+                      <Bar dataKey="challan_count" fill="#1E40AF" radius={[4, 4, 0, 0]} name="Challans" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
 
@@ -288,20 +311,29 @@ export default function DashboardClient() {
             <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col min-h-[280px]">
               <h3 className="text-[16px] font-semibold text-slate-900 mb-3">Lead Status</h3>
               <div className="flex-1 w-full h-[180px] flex items-center justify-center relative">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={leadStatusData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="count">
-                      {leadStatusData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.status] || CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute text-center pointer-events-none">
-                  <span className="block font-mono text-[22px] font-bold text-slate-900">{summary.total_leads}</span>
-                  <span className="text-[11px] font-semibold text-slate-500">Total</span>
-                </div>
+                {leadStatusData.length === 0 ? (
+                  <div className="text-center text-slate-400">
+                    <span className="material-symbols-outlined text-[32px] block mb-2 opacity-50">pie_chart</span>
+                    <p className="text-[13px]">No leads yet</p>
+                  </div>
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={leadStatusData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="count">
+                          {leadStatusData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.status] || CHART_COLORS[index % CHART_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute text-center pointer-events-none">
+                      <span className="block font-mono text-[22px] font-bold text-slate-900">{summary.total_leads}</span>
+                      <span className="text-[11px] font-semibold text-slate-500">Total</span>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="flex flex-wrap gap-2 mt-2">
                 {leadStatusData.map((s, i) => (
@@ -350,7 +382,17 @@ export default function DashboardClient() {
                     <td className="py-2.5 px-4 text-[13px] font-mono text-right">{d.followup_count > 0 ? <span className="text-amber-600 font-bold">{d.followup_count}</span> : <span className="text-slate-400">0</span>}</td>
                   </tr>
                 ))}
-                {districtData.length === 0 && <tr><td colSpan={4} className="py-6 text-center text-slate-500 text-sm">No district data yet</td></tr>}
+                {districtData.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-12 text-center">
+                      <div className="flex flex-col items-center justify-center text-slate-400">
+                        <span className="material-symbols-outlined text-[48px] mb-2 opacity-50">map</span>
+                        <p className="text-[14px] font-medium text-slate-500">No district data available</p>
+                        <p className="text-[12px] mt-1">Challans and leads will appear here once created.</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -390,7 +432,17 @@ export default function DashboardClient() {
                     <td className="py-2.5 px-4 text-[13px] font-mono text-right">{b.repeat_count > 0 ? <span className="text-amber-600 font-bold">{b.repeat_count}</span> : <span className="text-slate-400">0</span>}</td>
                   </tr>
                 ))}
-                {bookData.length === 0 && <tr><td colSpan={4} className="py-6 text-center text-slate-500 text-sm">No book data yet</td></tr>}
+                {bookData.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-12 text-center">
+                      <div className="flex flex-col items-center justify-center text-slate-400">
+                        <span className="material-symbols-outlined text-[48px] mb-2 opacity-50">menu_book</span>
+                        <p className="text-[14px] font-medium text-slate-500">No books distributed yet</p>
+                        <p className="text-[12px] mt-1">Specimen distribution data will appear here.</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -427,7 +479,17 @@ export default function DashboardClient() {
                     <td className="py-3 px-4 text-right"><ScoreBar score={r.performance_score} /></td>
                   </tr>
                 ))}
-                {representativeData.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-slate-500 text-sm">No representative data yet</td></tr>}
+                {representativeData.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-12 text-center">
+                      <div className="flex flex-col items-center justify-center text-slate-400">
+                        <span className="material-symbols-outlined text-[48px] mb-2 opacity-50">group_off</span>
+                        <p className="text-[14px] font-medium text-slate-500">No representative data yet</p>
+                        <p className="text-[12px] mt-1">Performance metrics will populate automatically.</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

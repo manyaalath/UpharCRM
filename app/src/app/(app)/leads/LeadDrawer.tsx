@@ -15,7 +15,7 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   status_changed: { icon: 'sync', color: '#6B7280' },
 };
 
-export default function LeadDrawer({ lead, onClose }: { lead: Lead | null, onClose: () => void }) {
+export default function LeadDrawer({ lead, onClose }: { lead: any; onClose: () => void }) {
   const drawerRef = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useState<'timeline' | 'feedback'>('timeline');
   const [activities, setActivities] = useState<LeadActivity[]>([]);
@@ -97,7 +97,15 @@ export default function LeadDrawer({ lead, onClose }: { lead: Lead | null, onClo
 
   if (!lead) return null;
 
-  const colors = LEAD_STATUS_COLORS[lead.status] || LEAD_STATUS_COLORS.new;
+  const colors = LEAD_STATUS_COLORS[lead.status as keyof typeof LEAD_STATUS_COLORS] || LEAD_STATUS_COLORS.new;
+
+  const instContact = Array.isArray(lead.institute_contacts) ? lead.institute_contacts[0] : lead.institute_contacts;
+  const contact_person = instContact?.contacts?.name || 'Unknown';
+  const mobile_no = instContact?.contacts?.mobile_no || 'Unknown';
+  const institute_name = instContact?.institutes?.name || 'Unknown';
+  const district = instContact?.institutes?.locations?.district || 'Unknown';
+  const village_town = instContact?.institutes?.village_town;
+  const locality = instContact?.institutes?.locality;
 
   return (
     <>
@@ -136,30 +144,30 @@ export default function LeadDrawer({ lead, onClose }: { lead: Lead | null, onClo
                 <span className="material-symbols-outlined text-slate-500 text-[20px]">person</span>
               </div>
               <div>
-                <h3 className="text-[14px] font-semibold text-slate-900">{lead.contact_person}</h3>
-                <p className="text-[12px] text-slate-500">{lead.institute_name}</p>
+                <h3 className="text-[14px] font-semibold text-slate-900">{contact_person}</h3>
+                <p className="text-[12px] text-slate-500">{institute_name}</p>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-slate-100">
               <div>
                 <span className="block text-[10px] text-slate-500 font-mono uppercase tracking-wide">Phone</span>
-                <span className="font-mono text-[13px] text-slate-900">{lead.mobile_no}</span>
+                <span className="font-mono text-[13px] text-slate-900">{mobile_no}</span>
               </div>
               <div>
                 <span className="block text-[10px] text-slate-500 font-mono uppercase tracking-wide">District</span>
-                <span className="text-[13px] text-slate-900">{lead.district}</span>
+                <span className="text-[13px] text-slate-900">{district}</span>
               </div>
-              {lead.village_town && (
+              {village_town && (
                 <div>
                   <span className="block text-[10px] text-slate-500 font-mono uppercase tracking-wide">Village/Town</span>
-                  <span className="text-[13px] text-slate-900">{lead.village_town}</span>
+                  <span className="text-[13px] text-slate-900">{village_town}</span>
                 </div>
               )}
-              {lead.locality && (
+              {locality && (
                 <div>
                   <span className="block text-[10px] text-slate-500 font-mono uppercase tracking-wide">Locality</span>
-                  <span className="text-[13px] text-slate-900">{lead.locality}</span>
+                  <span className="text-[13px] text-slate-900">{locality}</span>
                 </div>
               )}
             </div>
@@ -203,7 +211,7 @@ export default function LeadDrawer({ lead, onClose }: { lead: Lead | null, onClo
                         <div className="flex-1 bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm">
                           <div className="flex justify-between items-start mb-0.5">
                             <span className="text-[12px] font-semibold text-slate-900">{activity.activity_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
-                            <span className="font-mono text-[10px] text-slate-400">{new Date(activity.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
+                            <span className="font-mono text-[10px] text-slate-400">{new Date(activity.created_at!).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
                           </div>
                           <p className="text-[11px] text-slate-500">{activity.description}</p>
                         </div>
@@ -273,7 +281,7 @@ export default function LeadDrawer({ lead, onClose }: { lead: Lead | null, onClo
                       <div key={fb.id} className="bg-white border border-slate-200 rounded-lg p-3">
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-[12px] font-bold text-slate-900 capitalize">{fb.call_outcome.replace(/_/g, ' ')}</span>
-                          <span className="font-mono text-[10px] text-slate-400">{new Date(fb.created_at).toLocaleDateString('en-IN')}</span>
+                          <span className="font-mono text-[10px] text-slate-400">{new Date(fb.created_at!).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                         </div>
                         {fb.suggestions && <p className="text-[11px] text-slate-500"><strong>Suggestion:</strong> {fb.suggestions}</p>}
                         {fb.complaints && <p className="text-[11px] text-red-500"><strong>Complaint:</strong> {fb.complaints}</p>}

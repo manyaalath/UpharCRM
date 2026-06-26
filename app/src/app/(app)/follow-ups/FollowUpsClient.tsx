@@ -485,8 +485,15 @@ export default function FollowUpsClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {items.map((item, idx) => {
-                  const lead = item.lead as FollowUpLead;
+                {items.map((item: any, idx) => {
+                  const lead = item.leads;
+                  const instContact = Array.isArray(lead?.institute_contacts) ? lead?.institute_contacts[0] : lead?.institute_contacts;
+                  const contact_person = instContact?.contacts?.name || '-';
+                  const institute_name = instContact?.institutes?.name || '-';
+                  const district = instContact?.institutes?.locations?.district || '-';
+                  const village_town = instContact?.institutes?.village_town || '';
+                  const agent_name = item.agents?.name || '-';
+
                   const isLoading = actionLoading === item.id;
                   const statusColors = FOLLOWUP_STATUS_COLORS[item.status as keyof typeof FOLLOWUP_STATUS_COLORS] || FOLLOWUP_STATUS_COLORS.pending;
 
@@ -496,14 +503,14 @@ export default function FollowUpsClient() {
                       className={`transition-colors hover:bg-slate-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'} ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}
                     >
                       <td className="py-3 px-4">
-                        <div className="text-[13px] font-semibold text-slate-900">{lead?.contact_person || '-'}</div>
-                        <div className="text-[10px] font-mono text-slate-400 mt-0.5">{lead?.lead_id || ''}</div>
+                        <div className="text-[13px] font-semibold text-slate-900">{contact_person}</div>
+                        <div className="text-[10px] font-mono text-slate-400 mt-0.5">{lead?.lead_seq_id || ''}</div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="text-[13px] text-slate-700">{lead?.institute_name || '-'}</div>
-                        {lead?.village_town && <div className="text-[11px] text-slate-400 mt-0.5">{lead.village_town}</div>}
+                        <div className="text-[13px] text-slate-700">{institute_name}</div>
+                        {village_town && <div className="text-[11px] text-slate-400 mt-0.5">{village_town}</div>}
                       </td>
-                      <td className="py-3 px-4 text-[13px] text-slate-600">{lead?.district || '-'}</td>
+                      <td className="py-3 px-4 text-[13px] text-slate-600">{district}</td>
                       <td className="py-3 px-4">
                         <div className={`text-[13px] font-mono font-bold ${
                           activeTab === 'overdue' ? 'text-red-600' : activeTab === 'due_today' ? 'text-amber-600' : 'text-slate-700'
@@ -516,7 +523,7 @@ export default function FollowUpsClient() {
                           {getDaysLabel(item.followup_date)}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-[12px] text-slate-600">{item.assigned_rep || '-'}</td>
+                      <td className="py-3 px-4 text-[12px] text-slate-600">{agent_name}</td>
                       <td className="py-3 px-4">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${statusColors.bg} ${statusColors.text} border ${statusColors.border}`}>
                           {item.status.replace('_', ' ')}

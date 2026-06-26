@@ -7,97 +7,138 @@ export async function GET() {
   try {
     const supabase = await createClient();
     const today = new Date().toISOString().split('T')[0];
+    const nextWeek = new Date(); 
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    const nextWeekStr = nextWeek.toISOString().split('T')[0];
 
-    // ── Section A: Overview KPIs ──
+    const followUpSelect = `
+      id, followup_date, status, remarks, 
+      agents(name),
+      leads:lead_id ( 
+        id, lead_seq_id, status,
+        institute_contacts!inner(
+          contacts(name, mobile_no),
+          institutes!inner(name, locations!inner(district))
+        )
+      )
+    `;
+
+    // ── Execute all independent queries in parallel ──
     const [
+      // Section A: Overview
       { count: totalChallans },
       { count: totalLeads },
       { count: pendingFollowups },
-      challanSpecimens,
-      challanDistricts,
+      challanBooksRes, // For books_distributed
+      
+      // Section B: District Analysis
+      allChallansRes,
+      allLeadsRes,
+      allFollowUpsRes,
+
+      // Section D: Rep Performance
+      repChallansRes,
+      repLeadsRes,
+      repFollowUpsRes,
+
+      // Section E: Follow-Up Queue
+      dueTodayRes,
+      overdueRes,
+      upcomingRes,
+      completedFollowUpsRes,
+      updateOverdueRes, // Auto-mark overdue
+
+      // Section F: Lead Intelligence
+      leadChallansRes,
+      classifyLeadsRes,
     ] = await Promise.all([
+      // A
       supabase.from('challans').select('*', { count: 'exact', head: true }),
       supabase.from('leads').select('*', { count: 'exact', head: true }),
       supabase.from('follow_ups').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-      supabase.from('challans').select('specimens_given'),
-      supabase.from('challans').select('district'),
+      supabase.from('challan_books').select('quantity, books(title), challans!inner(lead_id)'),
+      
+      // B (Districts)
+      supabase.from('challans').select('id, leads!inner(institute_contacts!inner(institutes!inner(locations!inner(district))))'),
+      supabase.from('leads').select('id, status, institute_contacts!inner(institutes!inner(locations!inner(district)))'),
+      supabase.from('follow_ups').select('id, status, leads!inner(institute_contacts!inner(institutes!inner(locations!inner(district))))').eq('status', 'pending'),
+
+      // D (Reps)
+      supabase.from('challans').select('id, agents(name)'),
+      supabase.from('leads').select('id, status, agents(name)'),
+      supabase.from('follow_ups').select('id, status, agents(name)').eq('status', 'completed'),
+
+      // E (Follow Ups)
+      supabase.from('follow_ups').select(followUpSelect).eq('followup_date', today).in('status', ['pending', 'overdue']).order('followup_date').limit(10),
+      supabase.from('follow_ups').select(followUpSelect).lt('followup_date', today).in('status', ['pending', 'overdue']).order('followup_date').limit(10),
+      supabase.from('follow_ups').select(followUpSelect).gt('followup_date', today).lte('followup_date', nextWeekStr).eq('status', 'pending').order('followup_date').limit(10),
+      supabase.from('follow_ups').select(followUpSelect).eq('status', 'completed').order('updated_at', { ascending: false }).limit(10),
+      supabase.from('follow_ups').update({ status: 'overdue' }).lt('followup_date', today).eq('status', 'pending'),
+
+      // F (Lead Intelligence - we will use allChallans to get institutes and teachers to avoid duplicating large queries)
+      supabase.from('challans').select('id, challan_date, leads!inner(id, institute_contacts!inner(contacts(name), institutes!inner(name, locations!inner(district))))').order('challan_date', { ascending: false }),
+      supabase.from('leads').select('id, status'),
     ]);
 
+    // Helpers to extract nested data safely
+    const extractDistrict = (item: any) => item?.institute_contacts?.institutes?.locations?.district || item?.leads?.institute_contacts?.institutes?.locations?.district || 'Unknown';
+    const extractInstName = (item: any) => item?.leads?.institute_contacts?.institutes?.name || 'Unknown';
+    const extractTeacherName = (item: any) => item?.leads?.institute_contacts?.contacts?.name || 'Unknown';
+    const extractAgentName = (item: any) => item?.agents?.name || 'Unknown';
+
+    // ── Process Section A ──
     let booksDistributed = 0;
-    (challanSpecimens.data || []).forEach(c => {
-      if (Array.isArray(c.specimens_given)) booksDistributed += c.specimens_given.length;
+    const districtSet = new Set<string>();
+    
+    (challanBooksRes.data || []).forEach(cb => {
+      booksDistributed += (cb.quantity || 1);
     });
-    const districtsCovered = new Set((challanDistricts.data || []).map(c => c.district)).size;
 
-    // ── Section B: District Analysis ──
-    const { data: allChallans } = await supabase.from('challans').select('district');
-    const { data: allLeads } = await supabase.from('leads').select('district, status');
-    const { data: allFollowUps } = await supabase
-      .from('follow_ups')
-      .select('status, lead:leads!lead_id ( district )')
-      .eq('status', 'pending');
+    (allChallansRes.data || []).forEach(c => {
+      districtSet.add(extractDistrict(c));
+    });
+    const districtsCovered = districtSet.size;
 
+    // ── Process Section B ──
     const districtStats: Record<string, { challan_count: number; lead_count: number; followup_count: number }> = {};
-    const ensureD = (d: string) => {
-      if (!districtStats[d]) districtStats[d] = { challan_count: 0, lead_count: 0, followup_count: 0 };
-    };
-    (allChallans || []).forEach(c => { ensureD(c.district); districtStats[c.district].challan_count++; });
-    (allLeads || []).forEach(l => { ensureD(l.district); districtStats[l.district].lead_count++; });
-    (allFollowUps || []).forEach(f => {
-      const lead = f.lead as unknown as { district: string } | null;
-      if (lead?.district) { ensureD(lead.district); districtStats[lead.district].followup_count++; }
-    });
-    const districtData = Object.entries(districtStats)
-      .map(([district, s]) => ({ district, ...s }))
-      .sort((a, b) => b.challan_count - a.challan_count)
-      .slice(0, 10);
+    const ensureD = (d: string) => { if (!districtStats[d]) districtStats[d] = { challan_count: 0, lead_count: 0, followup_count: 0 }; };
+    
+    (allChallansRes.data || []).forEach(c => { const d = extractDistrict(c); ensureD(d); districtStats[d].challan_count++; });
+    (allLeadsRes.data || []).forEach(l => { const d = extractDistrict(l); ensureD(d); districtStats[d].lead_count++; });
+    (allFollowUpsRes.data || []).forEach(f => { const d = extractDistrict(f); ensureD(d); districtStats[d].followup_count++; });
+    
+    const districtData = Object.entries(districtStats).map(([district, s]) => ({ district, ...s })).sort((a, b) => b.challan_count - a.challan_count).slice(0, 10);
 
-    // ── Section C: Book Analysis ──
+    // ── Process Section C ──
     const bookStats: Record<string, { distribution_count: number; lead_ids: Set<string> }> = {};
-    const { data: bookChallans } = await supabase.from('challans').select('specimens_given, lead_id');
-    (bookChallans || []).forEach(c => {
-      const specimens = c.specimens_given as string[];
-      if (Array.isArray(specimens)) {
-        specimens.forEach(name => {
-          if (!bookStats[name]) bookStats[name] = { distribution_count: 0, lead_ids: new Set() };
-          bookStats[name].distribution_count++;
-          if (c.lead_id) bookStats[name].lead_ids.add(c.lead_id);
-        });
-      }
+    (challanBooksRes.data || []).forEach(cb => {
+      const bookName = (cb.books as any)?.title || 'Unknown';
+      const leadId = (cb.challans as any)?.lead_id;
+      if (!bookStats[bookName]) bookStats[bookName] = { distribution_count: 0, lead_ids: new Set() };
+      bookStats[bookName].distribution_count += cb.quantity;
+      if (leadId) bookStats[bookName].lead_ids.add(leadId);
     });
     const bookData = Object.entries(bookStats)
-      .map(([book_name, s]) => ({
-        book_name,
-        distribution_count: s.distribution_count,
-        unique_leads: s.lead_ids.size,
-        repeat_count: Math.max(0, s.distribution_count - s.lead_ids.size),
-      }))
-      .sort((a, b) => b.distribution_count - a.distribution_count)
-      .slice(0, 10);
+      .map(([book_name, s]) => ({ book_name, distribution_count: s.distribution_count, unique_leads: s.lead_ids.size, repeat_count: Math.max(0, s.distribution_count - s.lead_ids.size) }))
+      .sort((a, b) => b.distribution_count - a.distribution_count).slice(0, 10);
 
-    // ── Section D: Representative Performance ──
-    const { data: repChallans } = await supabase.from('challans').select('agent_name');
-    const { data: repLeads } = await supabase.from('leads').select('agent_name, status');
-    const { data: repFollowUps } = await supabase
-      .from('follow_ups')
-      .select('status, lead:leads!lead_id ( agent_name )')
-      .eq('status', 'completed');
-
+    // ── Process Section D ──
     const repStats: Record<string, { challan_count: number; lead_count: number; interested_count: number; followups_completed: number }> = {};
-    const ensureR = (n: string) => {
-      if (!repStats[n]) repStats[n] = { challan_count: 0, lead_count: 0, interested_count: 0, followups_completed: 0 };
-    };
-    (repChallans || []).forEach(c => { if (c.agent_name) { ensureR(c.agent_name); repStats[c.agent_name].challan_count++; } });
-    (repLeads || []).forEach(l => {
-      if (l.agent_name) {
-        ensureR(l.agent_name); repStats[l.agent_name].lead_count++;
-        if (l.status === 'interested') repStats[l.agent_name].interested_count++;
+    const ensureR = (n: string) => { if (!repStats[n]) repStats[n] = { challan_count: 0, lead_count: 0, interested_count: 0, followups_completed: 0 }; };
+    
+    (repChallansRes.data || []).forEach(c => { const n = extractAgentName(c); if(n !== 'Unknown') { ensureR(n); repStats[n].challan_count++; } });
+    (repLeadsRes.data || []).forEach(l => {
+      const n = extractAgentName(l);
+      if (n !== 'Unknown') {
+        ensureR(n); repStats[n].lead_count++;
+        if (l.status === 'interested') repStats[n].interested_count++;
       }
     });
-    (repFollowUps || []).forEach(f => {
-      const lead = f.lead as unknown as { agent_name: string } | null;
-      if (lead?.agent_name) { ensureR(lead.agent_name); repStats[lead.agent_name].followups_completed++; }
+    (repFollowUpsRes.data || []).forEach(f => {
+      const n = extractAgentName(f);
+      if (n !== 'Unknown') { ensureR(n); repStats[n].followups_completed++; }
     });
+    
     const maxC = Math.max(1, ...Object.values(repStats).map(s => s.challan_count));
     const maxI = Math.max(1, ...Object.values(repStats).map(s => s.interested_count));
     const representativeData = Object.entries(repStats)
@@ -109,88 +150,57 @@ export async function GET() {
       })
       .sort((a, b) => b.performance_score - a.performance_score);
 
-    // ── Section E: Follow-Up Queue ──
-    // Auto-mark overdue: update any past-due pending follow-ups
-    await supabase
-      .from('follow_ups')
-      .update({ status: 'overdue' })
-      .lt('followup_date', today)
-      .eq('status', 'pending');
-
-    const followUpSelect = 'id, followup_date, status, assigned_rep, remarks, lead:leads!lead_id ( id, contact_person, institute_name, district, mobile_no )';
-
-    const { data: dueToday } = await supabase
-      .from('follow_ups')
-      .select(followUpSelect)
-      .eq('followup_date', today).in('status', ['pending', 'overdue']).order('followup_date').limit(10);
-    const { data: overdue } = await supabase
-      .from('follow_ups')
-      .select(followUpSelect)
-      .lt('followup_date', today).in('status', ['pending', 'overdue']).order('followup_date').limit(10);
-    const nextWeek = new Date(); nextWeek.setDate(nextWeek.getDate() + 7);
-    const { data: upcoming } = await supabase
-      .from('follow_ups')
-      .select(followUpSelect)
-      .gt('followup_date', today).lte('followup_date', nextWeek.toISOString().split('T')[0])
-      .eq('status', 'pending').order('followup_date').limit(10);
-    const { data: completedFollowUps } = await supabase
-      .from('follow_ups')
-      .select(followUpSelect)
-      .eq('status', 'completed').order('updated_at', { ascending: false }).limit(10);
-
-    // ── Section F: Lead Intelligence ──
-    // Most frequently visited institutions
+    // ── Process Section F ──
     const instituteCounts: Record<string, { count: number; district: string; last_visit: string }> = {};
-    const { data: instChallans } = await supabase.from('challans').select('institute_name, district, challan_date').order('challan_date', { ascending: false });
-    (instChallans || []).forEach(c => {
-      if (!instituteCounts[c.institute_name]) {
-        instituteCounts[c.institute_name] = { count: 0, district: c.district, last_visit: c.challan_date };
-      }
-      instituteCounts[c.institute_name].count++;
-    });
-    const topInstitutions = Object.entries(instituteCounts)
-      .map(([name, s]) => ({ name, ...s }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-
-    // Most frequently visited teachers
     const teacherCounts: Record<string, { count: number; district: string; last_visit: string }> = {};
-    const { data: teachChallans } = await supabase.from('challans').select('teacher_name, district, challan_date').order('challan_date', { ascending: false });
-    (teachChallans || []).forEach(c => {
-      if (!teacherCounts[c.teacher_name]) {
-        teacherCounts[c.teacher_name] = { count: 0, district: c.district, last_visit: c.challan_date };
-      }
-      teacherCounts[c.teacher_name].count++;
-    });
-    const topTeachers = Object.entries(teacherCounts)
-      .map(([name, s]) => ({ name, ...s }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-
-    // Lead categories (Hot/Warm/Cold)
-    const leadCategories: { hot: number; warm: number; cold: number } = { hot: 0, warm: 0, cold: 0 };
-    const { data: leadChallans } = await supabase.from('challans').select('lead_id');
     const challanPerLead: Record<string, number> = {};
-    (leadChallans || []).forEach(c => {
-      if (c.lead_id) challanPerLead[c.lead_id] = (challanPerLead[c.lead_id] || 0) + 1;
+
+    (leadChallansRes.data || []).forEach(c => {
+      const instName = extractInstName(c);
+      const teacherName = extractTeacherName(c);
+      const district = extractDistrict(c);
+      const leadId = (c.leads as any)?.id;
+      
+      if (!instituteCounts[instName]) instituteCounts[instName] = { count: 0, district, last_visit: c.challan_date };
+      instituteCounts[instName].count++;
+      
+      if (!teacherCounts[teacherName]) teacherCounts[teacherName] = { count: 0, district, last_visit: c.challan_date };
+      teacherCounts[teacherName].count++;
+      
+      if (leadId) challanPerLead[leadId] = (challanPerLead[leadId] || 0) + 1;
     });
-    const { data: classifyLeads } = await supabase.from('leads').select('id, status');
-    (classifyLeads || []).forEach(l => {
-      const visits = challanPerLead[l.id] || 1;
+    
+    const topInstitutions = Object.entries(instituteCounts).map(([name, s]) => ({ name, ...s })).sort((a, b) => b.count - a.count).slice(0, 5);
+    const topTeachers = Object.entries(teacherCounts).map(([name, s]) => ({ name, ...s })).sort((a, b) => b.count - a.count).slice(0, 5);
+
+    const leadCategories = { hot: 0, warm: 0, cold: 0 };
+    (classifyLeadsRes.data || []).forEach(l => {
+      const visits = challanPerLead[l.id] || 0;
       const interested = l.status === 'interested';
       if (visits >= 3 && interested) leadCategories.hot++;
       else if (visits >= 2 || interested) leadCategories.warm++;
       else leadCategories.cold++;
     });
 
-    // Lead status breakdown
     const statusCounts: Record<string, number> = {};
-    (allLeads || []).forEach(l => {
-      if (l.status !== 'converted') {
-        statusCounts[l.status] = (statusCounts[l.status] || 0) + 1;
-      }
-    });
+    (classifyLeadsRes.data || []).forEach(l => { if (l.status !== 'converted') statusCounts[l.status] = (statusCounts[l.status] || 0) + 1; });
     const leadStatusData = Object.entries(statusCounts).map(([status, count]) => ({ status, count }));
+
+    // Format Follow Ups for Frontend (flatten nested properties)
+    const formatQueue = (queue: any[]) => queue.map(f => {
+      const lead = f.leads;
+      const instContact = Array.isArray(lead?.institute_contacts) ? lead?.institute_contacts[0] : lead?.institute_contacts;
+      return {
+        id: f.id,
+        lead_id: lead?.id,
+        contact_person: instContact?.contacts?.name,
+        institute_name: instContact?.institutes?.name,
+        district: instContact?.institutes?.locations?.district,
+        mobile_no: instContact?.contacts?.mobile_no,
+        followup_date: f.followup_date,
+        status: f.status
+      };
+    });
 
     return NextResponse.json({
       summary: {
@@ -204,23 +214,16 @@ export async function GET() {
       bookData,
       representativeData,
       followUpQueue: {
-        due_today: dueToday || [],
-        overdue: overdue || [],
-        upcoming: upcoming || [],
-        completed: completedFollowUps || [],
+        due_today: formatQueue(dueTodayRes.data || []),
+        overdue: formatQueue(overdueRes.data || []),
+        upcoming: formatQueue(upcomingRes.data || []),
+        completed: formatQueue(completedFollowUpsRes.data || []),
       },
-      leadIntelligence: {
-        topInstitutions,
-        topTeachers,
-        leadCategories,
-      },
+      leadIntelligence: { topInstitutions, topTeachers, leadCategories },
       leadStatusData,
     });
   } catch (error) {
     console.error('Dashboard API error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch dashboard data' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch dashboard data' }, { status: 500 });
   }
 }

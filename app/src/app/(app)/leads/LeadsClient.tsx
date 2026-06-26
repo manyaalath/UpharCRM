@@ -1,13 +1,92 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import LeadDrawer from './LeadDrawer';
 import { LEAD_STATUS_COLORS, LEAD_STATUS_OPTIONS, Lead } from '@/lib/types';
 import { ALL_DISTRICTS } from '@/lib/constants';
 
 export default function LeadsClient({ initialData, totalCount, agents }: { initialData: Lead[], totalCount: number, agents: string[] }) {
-  const [leads] = useState<Lead[]>(initialData);
+  const [leads, setLeads] = useState<Lead[]>(initialData);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  
+  // Filters
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [district, setDistrict] = useState('');
+  const [agentName, setAgentName] = useState('');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+  
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(totalCount);
+  const limit = 20;
+
+  const fetchLeads = useCallback(async (isExport = false) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (status) params.append('status', status);
+    if (district) params.append('district', district);
+    if (agentName) params.append('agent_name', agentName);
+    if (dateStart) params.append('date_start', dateStart);
+    if (dateEnd) params.append('date_end', dateEnd);
+    
+    if (isExport) {
+      params.append('limit', '999999');
+    } else {
+      params.append('page', page.toString());
+      params.append('limit', limit.toString());
+    }
+
+    try {
+      const res = await fetch(`/api/leads?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      if (isExport) return data.data;
+      
+      setLeads(data.data || []);
+      setTotal(data.pagination?.total || 0);
+    } catch (err) {
+      console.error('Failed to fetch leads:', err);
+    }
+  }, [search, status, district, agentName, dateStart, dateEnd, page]);
+
+  useEffect(() => {
+    fetchLeads();
+  }, [fetchLeads]);
+
+  const handleExport = async () => {
+    const dataToExport = await fetchLeads(true);
+    if (!dataToExport || dataToExport.length === 0) {
+      alert('No data to export');
+      return;
+    }
+    
+    // Convert to CSV
+    const headers = ['Lead ID', 'Contact Person', 'Institute', 'Mobile', 'District', 'Status', 'Representative', 'Next Followup'];
+    const rows = dataToExport.map((l: any) => [
+      l.lead_id,
+      `"${l.contact_person || ''}"`,
+      `"${l.institute_name || ''}"`,
+      l.mobile_no,
+      `"${l.district || ''}"`,
+      l.status,
+      `"${l.agent_name || ''}"`,
+      l.next_followup_date || ''
+    ]);
+    
+    const csvContent = [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `leads_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
@@ -24,7 +103,7 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
           <hr className="w-16 h-[2px] bg-[#1E40AF] border-none absolute -bottom-1 left-0" />
         </div>
         <div className="flex gap-3 w-full sm:w-auto">
-          <button className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-md text-slate-900 hover:bg-slate-50 transition-colors text-[13px] font-semibold w-full sm:w-auto shadow-sm">
+          <button onClick={handleExport} className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-md text-slate-900 hover:bg-slate-50 transition-colors text-[13px] font-semibold w-full sm:w-auto shadow-sm">
             <span className="material-symbols-outlined text-[18px]">download</span>
             Export
           </button>
@@ -37,21 +116,23 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
 
       {/* Filters Area */}
       <div className="bg-white border border-slate-200 rounded-lg p-4 mb-6 shadow-sm flex-shrink-0">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <div className="md:col-span-2">
             <label className="block text-[13px] font-semibold text-slate-500 mb-1">Search Leads</label>
             <div className="relative">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
               <input 
                 type="text" 
-                placeholder="Name, Institute, Phone..." 
+                placeholder="Name, Institute, Phone, Rep..." 
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1); }}
                 className="w-full bg-white border border-slate-200 rounded-md py-2 pl-10 pr-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px]"
               />
             </div>
           </div>
           <div>
             <label className="block text-[13px] font-semibold text-slate-500 mb-1">Status</label>
-            <select className="w-full bg-white border border-slate-200 rounded-md py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px] outline-none appearance-none">
+            <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }} className="w-full bg-white border border-slate-200 rounded-md py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px] outline-none appearance-none">
               <option value="">All Statuses</option>
               {LEAD_STATUS_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -60,7 +141,7 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
           </div>
           <div>
             <label className="block text-[13px] font-semibold text-slate-500 mb-1">District</label>
-            <select className="w-full bg-white border border-slate-200 rounded-md py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px] outline-none appearance-none">
+            <select value={district} onChange={e => { setDistrict(e.target.value); setPage(1); }} className="w-full bg-white border border-slate-200 rounded-md py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px] outline-none appearance-none">
               <option value="">All Districts</option>
               {ALL_DISTRICTS.map(d => (
                 <option key={d} value={d}>{d}</option>
@@ -69,12 +150,19 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
           </div>
           <div>
             <label className="block text-[13px] font-semibold text-slate-500 mb-1">Representative</label>
-            <select className="w-full bg-white border border-slate-200 rounded-md py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px] outline-none appearance-none">
-              <option value="">All Representatives</option>
+            <select value={agentName} onChange={e => { setAgentName(e.target.value); setPage(1); }} className="w-full bg-white border border-slate-200 rounded-md py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px] outline-none appearance-none">
+              <option value="">All Reps</option>
               {agents.map(a => (
                 <option key={a} value={a}>{a}</option>
               ))}
             </select>
+          </div>
+          <div className="flex flex-col gap-1 col-span-2 md:col-span-1">
+             <label className="block text-[13px] font-semibold text-slate-500 mb-1">Date Range</label>
+             <div className="flex gap-2">
+               <input type="date" value={dateStart} onChange={e => { setDateStart(e.target.value); setPage(1); }} className="w-full bg-white border border-slate-200 rounded-md p-1 text-[12px] focus:outline-none focus:ring-2 focus:ring-[#1E40AF]" />
+               <input type="date" value={dateEnd} onChange={e => { setDateEnd(e.target.value); setPage(1); }} className="w-full bg-white border border-slate-200 rounded-md p-1 text-[12px] focus:outline-none focus:ring-2 focus:ring-[#1E40AF]" />
+             </div>
           </div>
         </div>
       </div>
@@ -94,8 +182,15 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 overflow-y-auto">
-              {leads.map((lead) => {
-                const colors = LEAD_STATUS_COLORS[lead.status] || LEAD_STATUS_COLORS.new;
+              {leads.map((lead: any) => {
+                const colors = LEAD_STATUS_COLORS[lead.status as keyof typeof LEAD_STATUS_COLORS] || LEAD_STATUS_COLORS.new;
+                const instContact = Array.isArray(lead.institute_contacts) ? lead.institute_contacts[0] : lead.institute_contacts;
+                const contact_person = instContact?.contacts?.name || 'Unknown';
+                const mobile_no = instContact?.contacts?.mobile_no || 'Unknown';
+                const institute_name = instContact?.institutes?.name || 'Unknown';
+                const district = instContact?.institutes?.locations?.district || 'Unknown';
+                const agent_name = lead.agents?.name || 'Unassigned';
+
                 return (
                   <tr 
                     key={lead.id} 
@@ -103,12 +198,12 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
                     className="hover:bg-slate-50 transition-colors cursor-pointer group"
                   >
                     <td className="py-3 px-4">
-                      <div className="text-[13px] font-semibold text-slate-900">{lead.contact_person}</div>
-                      <div className="font-mono text-slate-500 text-[12px] mt-1">{lead.mobile_no}</div>
+                      <div className="text-[13px] font-semibold text-slate-900">{contact_person}</div>
+                      <div className="font-mono text-slate-500 text-[12px] mt-1">{mobile_no}</div>
                     </td>
                     <td className="py-3 px-4">
-                      <div className="text-[14px] text-slate-900">{lead.institute_name}</div>
-                      <div className="font-hindi-hint text-slate-500 text-[12px] mt-1">{lead.district}</div>
+                      <div className="text-[14px] text-slate-900">{institute_name}</div>
+                      <div className="font-hindi-hint text-slate-500 text-[12px] mt-1">{district}</div>
                     </td>
                     <td className="py-3 px-4">
                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-[12px] font-bold ${colors.bg} ${colors.text} border ${colors.border}`}>
@@ -125,7 +220,7 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
                         <span className="text-slate-500">-</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-[14px] text-slate-500">{lead.agent_name || 'Unassigned'}</td>
+                    <td className="py-3 px-4 text-[14px] text-slate-500">{agent_name}</td>
                     <td className="py-3 px-4 text-right">
                       <button className="text-slate-400 group-hover:text-[#1E40AF] transition-colors focus:outline-none p-1 rounded hover:bg-slate-100">
                         <span className="material-symbols-outlined text-[20px]">chevron_right</span>
@@ -146,13 +241,21 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
         {/* Pagination */}
         <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex items-center justify-between flex-shrink-0">
           <div className="font-mono text-[12px] text-slate-500">
-            Showing 1-{leads.length} of {totalCount} leads
+            Showing {leads.length > 0 ? (page - 1) * limit + 1 : 0}-{Math.min(page * limit, total)} of {total} leads
           </div>
           <div className="flex gap-2">
-            <button className="p-1 rounded bg-white border border-slate-200 text-slate-500 hover:text-slate-900 disabled:opacity-50" disabled>
+            <button 
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="p-1 rounded bg-white border border-slate-200 text-slate-500 hover:text-slate-900 disabled:opacity-50"
+            >
               <span className="material-symbols-outlined text-[18px]">chevron_left</span>
             </button>
-            <button className="p-1 rounded bg-white border border-slate-200 text-slate-500 hover:text-slate-900">
+            <button 
+              onClick={() => setPage(p => p + 1)}
+              disabled={page * limit >= total}
+              className="p-1 rounded bg-white border border-slate-200 text-slate-500 hover:text-slate-900 disabled:opacity-50"
+            >
               <span className="material-symbols-outlined text-[18px]">chevron_right</span>
             </button>
           </div>

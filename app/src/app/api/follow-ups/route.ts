@@ -22,9 +22,15 @@ export async function GET(request: Request) {
     .from('follow_ups')
     .select(`
       *,
-      lead:leads!lead_id (
-        id, lead_id, contact_person, institute_name, district, mobile_no, status, village_town, agent_name
-      )
+      leads:lead_id (
+        id, lead_seq_id, status,
+        institute_contacts!inner(
+          contacts(name, mobile_no),
+          institutes(name, locations(district))
+        ),
+        agents(name)
+      ),
+      agents(name)
     `)
     .order('followup_date', { ascending: true });
 
@@ -38,12 +44,16 @@ export async function GET(request: Request) {
   } else if (queue === 'upcoming') {
     query = query.gt('followup_date', today).eq('status', 'pending');
   } else if (queue === 'completed') {
-    query = query.eq('status', 'completed').order('completed_date', { ascending: false });
+    // We don't have a specific completed_date column anymore, updated_at suffices
+    query = query.eq('status', 'completed').order('updated_at', { ascending: false });
   }
 
   const { data, error } = await query.limit(50);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error(error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json({ data });
 }
@@ -56,13 +66,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'lead_id and followup_date are required' }, { status: 422 });
   }
 
+  let agentId = body.agent_id;
+  // If agent_name is passed, try to look it up
+  if (!agentId && body.agent_name) {
+    const { data: agent } = await supabase.from('agents').select('id').eq('name', body.agent_name).single();
+    if (agent) agentId = agent.id;
+  }
+
   const { data, error } = await supabase
     .from('follow_ups')
     .insert([{
       lead_id: body.lead_id,
       challan_id: body.challan_id || null,
-      challan_no: body.challan_no || null,
-      assigned_rep: body.assigned_rep || null,
+      agent_id: agentId || null,
       followup_date: body.followup_date,
       status: 'pending',
       remarks: body.remarks || null,
@@ -95,17 +111,16 @@ export async function PUT(request: Request) {
   if (body.status) updates.status = body.status;
   if (body.followup_date) updates.followup_date = body.followup_date;
   if (body.remarks !== undefined) updates.remarks = body.remarks;
-  if (body.assigned_rep !== undefined) updates.assigned_rep = body.assigned_rep;
-
-  // Set completed_date when marking as completed
-  if (body.status === 'completed') {
-    updates.completed_date = new Date().toISOString().split('T')[0];
+  
+  if (body.agent_id !== undefined) updates.agent_id = body.agent_id;
+  else if (body.agent_name) {
+    const { data: agent } = await supabase.from('agents').select('id').eq('name', body.agent_name).single();
+    if (agent) updates.agent_id = agent.id;
   }
 
-  // When rescheduling, reset status to pending and clear completed_date
+  // When rescheduling, reset status to pending
   if (body.status === 'rescheduled') {
     updates.status = 'pending';
-    updates.completed_date = null;
   }
 
   const { data, error } = await supabase
@@ -122,7 +137,7 @@ export async function PUT(request: Request) {
     const statusLabel = body.status === 'completed' ? 'completed' : body.status === 'rescheduled' ? 'rescheduled' : body.status;
     await supabase.from('lead_activities').insert([{
       lead_id: body.lead_id,
-      activity_type: body.status === 'completed' ? 'followup_completed' : 'followup_rescheduled',
+      activity_type: 'status_changed',
       description: `Follow-up ${statusLabel}${body.followup_date ? ` to ${body.followup_date}` : ''}`,
       metadata: { followup_id: body.id, new_status: body.status, ...(body.followup_date && { new_date: body.followup_date }) },
     }]);

@@ -16,10 +16,16 @@ export default async function RecordsPage() {
     .order('created_at', { ascending: false })
     .limit(20);
 
+  // Fetch agents for the filter dropdown
+  const { data: agents } = await supabase
+    .from('agents')
+    .select('name');
+
   return (
     <RecordsClient 
       initialData={initialChallans || []} 
       totalCount={count || 0} 
+      agents={(agents || []).map(a => a.name)}
     />
   );
 }

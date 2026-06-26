@@ -1,64 +1,34 @@
+import { Database } from './database.types';
+
 // ============================================================
-// Uphar CRM — Shared TypeScript Types
+// Uphar CRM — Shared TypeScript Types (Normalized V4)
 // ============================================================
 
-// ---- Database Row Types ----
+export type Tables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
+export type Inserts<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert'];
+export type Updates<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update'];
 
-export interface Challan {
-  id: string;
-  challan_no: string;
-  challan_date: string;
-  teacher_name: string;
-  institute_name: string;
-  address: string;
-  village_town: string | null;
-  locality: string | null;
-  district: string;
-  pincode: string;
-  mobile_no: string;
-  specimens_given: string[];
-  agent_name: string;
-  lead_id: string | null;
-  created_at: string;
-  updated_at: string;
+// ---- Base Entities ----
+export type Location = Tables<'locations'>;
+export type Agent = Tables<'agents'>;
+export type Book = Tables<'books'>;
+export type Contact = Tables<'contacts'>;
+export type Institute = Tables<'institutes'>;
+
+export interface InstituteWithLocation extends Institute {
+  locations?: Location;
 }
 
-export type ChallanInsert = Omit<Challan, 'id' | 'created_at' | 'updated_at'>;
-export type ChallanUpdate = Partial<ChallanInsert>;
+export type InstituteContact = Tables<'institute_contacts'>;
 
-export interface Lead {
-  id: string;
-  lead_id: string;
-  contact_person: string;
-  institute_name: string;
-  mobile_no: string;
-  address: string | null;
-  village_town: string | null;
-  locality: string | null;
-  district: string;
-  pincode: string | null;
-  agent_name: string | null;
-  status: LeadStatus;
-  last_contact_date: string | null;
-  next_followup_date: string | null;
-  suggestions: string | null;
-  complaints: string | null;
-  remarks: string | null;
-  created_at: string;
-  updated_at: string;
+export interface InstituteContactDetails extends InstituteContact {
+  institutes?: InstituteWithLocation;
+  contacts?: Contact;
 }
 
-export type LeadUpdate = Partial<
-  Pick<Lead, 'status' | 'last_contact_date' | 'next_followup_date' | 'remarks' | 'suggestions' | 'complaints'>
->;
+// ---- Transactions ----
 
-export type LeadStatus =
-  | 'new'
-  | 'contacted'
-  | 'interested'
-  | 'followup_pending'
-  | 'not_interested'
-  | 'closed';
+export type LeadStatus = 'new' | 'contacted' | 'interested' | 'followup_pending' | 'not_interested' | 'closed';
 
 export const LEAD_STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
   { value: 'new', label: 'New' },
@@ -69,34 +39,33 @@ export const LEAD_STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
   { value: 'closed', label: 'Closed' },
 ];
 
-export const LEAD_STATUS_COLORS: Record<LeadStatus, { bg: string; text: string; border: string }> =
-  {
-    new: { bg: 'bg-[#E0E7FF]', text: 'text-[#3730A3]', border: 'border-[#A5B4FC]' },
-    contacted: { bg: 'bg-[#DBEAFE]', text: 'text-[#1E40AF]', border: 'border-[#93C5FD]' },
-    interested: { bg: 'bg-[#ECFDF5]', text: 'text-[#065F46]', border: 'border-[#6EE7B7]' },
-    followup_pending: { bg: 'bg-[#FEF3C7]', text: 'text-[#92400E]', border: 'border-[#FCD34D]' },
-    not_interested: { bg: 'bg-[#FEE2E2]', text: 'text-[#991B1B]', border: 'border-[#FCA5A5]' },
-    closed: { bg: 'bg-[#F3F4F6]', text: 'text-[#374151]', border: 'border-[#D1D5DB]' },
-  };
+export const LEAD_STATUS_COLORS: Record<LeadStatus, { bg: string; text: string; border: string }> = {
+  new: { bg: 'bg-[#E0E7FF]', text: 'text-[#3730A3]', border: 'border-[#A5B4FC]' },
+  contacted: { bg: 'bg-[#DBEAFE]', text: 'text-[#1E40AF]', border: 'border-[#93C5FD]' },
+  interested: { bg: 'bg-[#ECFDF5]', text: 'text-[#065F46]', border: 'border-[#6EE7B7]' },
+  followup_pending: { bg: 'bg-[#FEF3C7]', text: 'text-[#92400E]', border: 'border-[#FCD34D]' },
+  not_interested: { bg: 'bg-[#FEE2E2]', text: 'text-[#991B1B]', border: 'border-[#FCA5A5]' },
+  closed: { bg: 'bg-[#F3F4F6]', text: 'text-[#374151]', border: 'border-[#D1D5DB]' },
+};
 
-export interface Representative {
-  id: string;
-  name: string;
-  is_active: boolean;
-  created_at: string;
+export type Lead = Tables<'leads'>;
+
+export interface LeadDetails extends Lead {
+  institute_contacts?: InstituteContactDetails;
+  agents?: Agent | null;
 }
 
-// Keep backward-compatible alias
-export type Agent = Representative;
+export type Challan = Tables<'challans'>;
 
-export interface Profile {
-  id: string;
-  email: string;
-  role: 'data_entry' | 'super_admin';
-  name: string;
+export interface ChallanDetails extends Challan {
+  leads?: LeadDetails;
+  agents?: Agent | null;
+  challan_books?: { books: Book; quantity: number }[];
 }
 
-// ---- Follow-Up Types ----
+export type ChallanBook = Tables<'challan_books'>;
+
+// ---- Activities ----
 
 export type FollowUpStatus = 'pending' | 'completed' | 'overdue' | 'rescheduled';
 
@@ -114,23 +83,15 @@ export const FOLLOWUP_STATUS_COLORS: Record<FollowUpStatus, { bg: string; text: 
   rescheduled: { bg: 'bg-[#DBEAFE]', text: 'text-[#1E40AF]', border: 'border-[#93C5FD]' },
 };
 
-export interface FollowUp {
-  id: string;
-  lead_id: string;
-  challan_id: string | null;
-  challan_no: string | null;
-  assigned_rep: string | null;
-  followup_date: string;
-  status: FollowUpStatus;
-  remarks: string | null;
-  completed_date: string | null;
-  created_at: string;
-  updated_at: string;
-  // Joined fields (from lead)
-  lead?: Lead;
+export type FollowUp = Tables<'follow_ups'>;
+
+export interface FollowUpDetails extends FollowUp {
+  leads?: LeadDetails;
+  agents?: Agent | null;
+  challans?: Challan | null;
 }
 
-// ---- Lead Activity Types ----
+export type LeadActivity = Tables<'lead_activities'>;
 
 export type ActivityType =
   | 'specimen_distributed'
@@ -143,16 +104,8 @@ export type ActivityType =
   | 'lead_created'
   | 'challan_attached';
 
-export interface LeadActivity {
-  id: string;
-  lead_id: string;
-  activity_type: ActivityType;
-  description: string;
-  metadata: Record<string, unknown>;
-  created_at: string;
-}
 
-// ---- Call Feedback Types ----
+export type CallFeedback = Tables<'call_feedback'>;
 
 export type CallOutcome =
   | 'not_reachable'
@@ -171,18 +124,7 @@ export const CALL_OUTCOME_OPTIONS: { value: CallOutcome; label: string }[] = [
   { value: 'wants_more_specimens', label: 'Wants More Specimens' },
 ];
 
-export interface CallFeedback {
-  id: string;
-  lead_id: string;
-  call_outcome: CallOutcome;
-  suggestions: string | null;
-  complaints: string | null;
-  remarks: string | null;
-  created_by: string | null;
-  created_at: string;
-}
-
-// ---- Analytics Types ----
+// ---- Dashboard Analytics Types ----
 
 export interface AnalyticsSummary {
   total_challans: number;
@@ -199,11 +141,6 @@ export interface DistrictAnalytics {
   followup_count: number;
 }
 
-export interface MonthlyAnalytics {
-  month: string;
-  count: number;
-}
-
 export interface RepresentativeAnalytics {
   representative_name: string;
   challan_count: number;
@@ -218,11 +155,6 @@ export interface BookAnalytics {
   distribution_count: number;
   unique_leads: number;
   repeat_count: number;
-}
-
-export interface LeadStatusAnalytics {
-  status: string;
-  count: number;
 }
 
 export interface FollowUpQueueItem {
@@ -244,7 +176,7 @@ export interface LeadIntelligence {
   category: 'hot' | 'warm' | 'cold';
 }
 
-// ---- Pagination ----
+// ---- Pagination & API Error ----
 
 export interface PaginationMeta {
   page: number;
@@ -258,18 +190,8 @@ export interface PaginatedResponse<T> {
   pagination: PaginationMeta;
 }
 
-// ---- API Error ----
-
 export interface ApiError {
   error: string;
   code?: string;
   fields?: Record<string, string>;
-}
-
-// ---- Duplicate Detection ----
-
-export interface DuplicateCheckResult {
-  duplicate_found: boolean;
-  existing_lead?: Lead;
-  match_type?: 'mobile' | 'secondary';
 }

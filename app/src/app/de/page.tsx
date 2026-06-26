@@ -22,13 +22,20 @@ function DuplicateContactModal({
   onCancel,
   loading,
 }: {
-  existingLead: Lead;
+  existingLead: Lead | any;
   matchType: string;
   onAttach: () => void;
   onCreateNew: () => void;
   onCancel: () => void;
   loading: boolean;
 }) {
+  const instContact = Array.isArray(existingLead.institute_contacts) ? existingLead.institute_contacts[0] : existingLead.institute_contacts;
+  const contact_person = instContact?.contacts?.name || 'Unknown';
+  const mobile_no = instContact?.contacts?.mobile_no || 'Unknown';
+  const institute_name = instContact?.institutes?.name || 'Unknown';
+  const district = instContact?.institutes?.locations?.district || 'Unknown';
+  const village_town = instContact?.institutes?.village_town;
+
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
@@ -48,28 +55,28 @@ function DuplicateContactModal({
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-[15px] font-semibold text-slate-900">{existingLead.contact_person}</p>
-                <p className="text-[13px] text-slate-500">{existingLead.institute_name}</p>
+                <p className="text-[15px] font-semibold text-slate-900">{contact_person}</p>
+                <p className="text-[13px] text-slate-500">{institute_name}</p>
               </div>
-              <span className="text-[11px] font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded">{existingLead.lead_id}</span>
+              <span className="text-[11px] font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded">{existingLead.lead_seq_id}</span>
             </div>
             <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
               <div>
                 <span className="text-[11px] text-slate-500 uppercase">Mobile</span>
-                <p className="font-mono text-[13px] text-slate-900">{existingLead.mobile_no}</p>
+                <p className="font-mono text-[13px] text-slate-900">{mobile_no}</p>
               </div>
               <div>
                 <span className="text-[11px] text-slate-500 uppercase">District</span>
-                <p className="text-[13px] text-slate-900">{existingLead.district}</p>
+                <p className="text-[13px] text-slate-900">{district}</p>
               </div>
               <div>
                 <span className="text-[11px] text-slate-500 uppercase">Status</span>
                 <p className="text-[13px] text-slate-900 capitalize">{existingLead.status.replace('_', ' ')}</p>
               </div>
-              {existingLead.village_town && (
+              {village_town && (
                 <div>
                   <span className="text-[11px] text-slate-500 uppercase">Village/Town</span>
-                  <p className="text-[13px] text-slate-900">{existingLead.village_town}</p>
+                  <p className="text-[13px] text-slate-900">{village_town}</p>
                 </div>
               )}
             </div>
@@ -141,6 +148,7 @@ export default function DEDataEntryPage() {
   const [district, setDistrict] = useState('');
   const [otherDistrict, setOtherDistrict] = useState('');
   const [pincode, setPincode] = useState('');
+  const [fetchingPincode, setFetchingPincode] = useState(false);
   const [mobileNo, setMobileNo] = useState('');
   const [mobileError, setMobileError] = useState('');
   const [agentName, setAgentName] = useState('');
@@ -156,11 +164,64 @@ export default function DEDataEntryPage() {
     fetchSpecimenBooks();
   }, []);
 
-  // Reset district when state changes
+  // Reset district when state changes unless it was populated by pincode API (handled separately)
   useEffect(() => {
-    setDistrict('');
-    setOtherDistrict('');
+    // Only reset if it's not 'Other' with a value already set by pincode logic
+    if (state !== 'Other' || !otherDistrict) {
+      setDistrict('');
+      setOtherDistrict('');
+    }
   }, [state]);
+
+  // Pincode Auto Fill Logic
+  useEffect(() => {
+    if (pincode.length === 6) {
+      const fetchPincodeDetails = async () => {
+        setFetchingPincode(true);
+        try {
+          const res = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+          const data = await res.json();
+          if (data && data[0] && data[0].Status === 'Success') {
+            const postOffices = data[0].PostOffice;
+            if (postOffices && postOffices.length > 0) {
+              const firstPO = postOffices[0];
+              const apiState = firstPO.State;
+              const apiDistrict = firstPO.District;
+              
+              if (STATE_OPTIONS.includes(apiState)) {
+                setState(apiState);
+                // Wait for state to update options, but we can set district manually
+                setTimeout(() => {
+                  if (getDistrictsForState(apiState).includes(apiDistrict)) {
+                    setDistrict(apiDistrict);
+                  } else {
+                    setDistrict('Other');
+                    setOtherDistrict(apiDistrict);
+                  }
+                }, 50);
+              } else {
+                setState('Other');
+                setOtherState(apiState);
+                setTimeout(() => {
+                  setDistrict('Other');
+                  setOtherDistrict(apiDistrict);
+                }, 50);
+              }
+              // For village/town, pre-fill with the first post office name if empty
+              if (!villageTown) {
+                setVillageTown(firstPO.Name);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch pincode details', err);
+        } finally {
+          setFetchingPincode(false);
+        }
+      };
+      fetchPincodeDetails();
+    }
+  }, [pincode]);
 
   const fetchAgents = async () => {
     try {
@@ -222,7 +283,10 @@ export default function DEDataEntryPage() {
   };
 
   const getBookDisplayName = (book: { name: string; book_code: string | null }) => {
-    return book.book_code ? `${book.book_code} - ${book.name}` : book.name;
+    if (book.book_code) {
+      return `${book.book_code} - ${book.name}`;
+    }
+    return book.name;
   };
 
   // Filter specimen books based on search
@@ -270,6 +334,7 @@ export default function DEDataEntryPage() {
       village_town: villageTown || null,
       locality: locality || null,
       district: effectiveDistrict,
+      state: effectiveState,
       pincode,
       mobile_no: mobileNo,
       specimens_given: specimens,
@@ -588,7 +653,10 @@ export default function DEDataEntryPage() {
             {/* Pincode & Mobile */}
             <div className="grid grid-cols-2 gap-4 md:col-span-2">
               <div className="flex flex-col gap-1">
-                <label className="text-[13px] font-semibold text-slate-700">Pincode</label>
+                <label className="text-[13px] font-semibold text-slate-700 flex justify-between items-center">
+                  Pincode
+                  {fetchingPincode && <span className="text-[10px] text-[#1E40AF] font-normal animate-pulse">Fetching details...</span>}
+                </label>
                 <input
                   type="text"
                   value={pincode}
@@ -743,13 +811,17 @@ export default function DEDataEntryPage() {
                 </tr>
               </thead>
               <tbody>
-                {recentEntries.map(entry => (
-                  <tr key={entry.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-                    <td className="py-3 px-4 font-mono text-slate-600">{entry.challan_no}</td>
-                    <td className="py-3 px-4 text-sm text-slate-900 font-medium">{entry.institute_name}</td>
-                    <td className="py-3 px-4 text-sm text-slate-600">{entry.challan_date}</td>
-                  </tr>
-                ))}
+                {recentEntries.map((entry: any) => {
+                  const instContact = Array.isArray(entry.leads?.institute_contacts) ? entry.leads?.institute_contacts[0] : entry.leads?.institute_contacts;
+                  const instName = instContact?.institutes?.name || 'Unknown';
+                  return (
+                    <tr key={entry.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-4 font-mono text-slate-600">{entry.challan_no}</td>
+                      <td className="py-3 px-4 text-sm text-slate-900 font-medium">{instName}</td>
+                      <td className="py-3 px-4 text-sm text-slate-600">{entry.challan_date}</td>
+                    </tr>
+                  );
+                })}
                 {recentEntries.length === 0 && (
                   <tr>
                     <td colSpan={3} className="py-4 px-4 text-center text-slate-500 text-sm">No entries yet.</td>
