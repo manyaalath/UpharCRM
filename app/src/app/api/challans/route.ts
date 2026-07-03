@@ -1,7 +1,13 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { getUserContext, getDistrictFilter } from '@/lib/rbac';
 
 export async function GET(request: Request) {
+  const ctx = await getUserContext(request);
+  if (!ctx) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   
@@ -9,28 +15,41 @@ export async function GET(request: Request) {
   const limit = parseInt(searchParams.get('limit') || '20');
   const offset = (page - 1) * limit;
 
-  let query = supabase
-    .from('challans')
-    .select('*, leads!inner(institute_contacts!inner(contacts(name, mobile_no), institutes(name, address_line, village_town, locality, location_id))), agents(name)', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
+  // Determine if we need district filtering
+  const districtFilter = getDistrictFilter(ctx);
+  const requestedDistrict = searchParams.get('district');
 
-  // Apply filters - Note: In normalized schema, filtering requires foreign table references
-  // District filter
-  if (searchParams.has('district')) {
-    // We need to filter by location's district via institutes -> locations
-    // Supabase allows filtering on joined tables:
-    // Actually, it's easier to join locations explicitly if we need to filter by district
+  // Check permission for explicit district requests
+  if (requestedDistrict && districtFilter && !districtFilter.includes(requestedDistrict)) {
+    return NextResponse.json({ error: 'Access denied to this district' }, { status: 403 });
+  }
+
+  // Manager/telecaller with no assigned districts — return empty
+  if (districtFilter && districtFilter.length === 0) {
+    return NextResponse.json({
+      data: [],
+      pagination: { page, limit, total: 0, total_pages: 0 }
+    });
+  }
+
+  let query;
+
+  if (requestedDistrict || (districtFilter && districtFilter.length > 0)) {
+    // Need inner joins for district filtering
     query = supabase
       .from('challans')
       .select('*, leads!inner(institute_contacts!inner(contacts(name, mobile_no), institutes!inner(name, address_line, village_town, locality, locations!inner(district, state, pincode)))), agents(name)', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
-      
-    query = query.eq('leads.institute_contacts.institutes.locations.district', searchParams.get('district'));
+
+    if (requestedDistrict) {
+      query = query.eq('leads.institute_contacts.institutes.locations.district', requestedDistrict);
+    } else if (districtFilter && districtFilter.length > 0) {
+      query = query.in('leads.institute_contacts.institutes.locations.district', districtFilter);
+    }
   } else {
-     // Normal query with locations
-     query = supabase
+    // No district filter — full access
+    query = supabase
       .from('challans')
       .select('*, leads(institute_contacts(contacts(*), institutes(*, locations(*)))), agents(name)', { count: 'exact' })
       .order('created_at', { ascending: false })
@@ -46,16 +65,14 @@ export async function GET(request: Request) {
   if (searchParams.has('date_start')) query = query.gte('challan_date', searchParams.get('date_start'));
   if (searchParams.has('date_end')) query = query.lte('challan_date', searchParams.get('date_end'));
   
-  // Book filter (needs to join challan_books -> books)
+  // Book filter
   if (searchParams.has('book')) {
-    // This requires a separate inner join approach, but for simplicity we will just do a subquery or join challan_books
-    // In Supabase, filtering by a joined array is tricky. It's better to get challans that have the book
     const { data: cb } = await supabase.from('challan_books').select('challan_id, books!inner(title)').eq('books.title', searchParams.get('book'));
     if (cb && cb.length > 0) {
       const challanIds = cb.map(c => c.challan_id);
       query = query.in('id', challanIds);
     } else {
-      query = query.in('id', ['00000000-0000-0000-0000-000000000000']); // empty result
+      query = query.in('id', ['00000000-0000-0000-0000-000000000000']);
     }
   }
 
@@ -78,6 +95,16 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const ctx = await getUserContext(request);
+  if (!ctx) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
+  // Only data_entry, manager, admin can create challans
+  if (!['data_entry', 'manager', 'admin'].includes(ctx.role)) {
+    return NextResponse.json({ error: 'Insufficient permissions to create challans' }, { status: 403 });
+  }
+
   const supabase = await createClient();
   const body = await request.json();
 
@@ -92,15 +119,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `Challan number ${body.challan_no} already exists` }, { status: 409 });
   }
 
-  const confirmAction = body.confirm_action; // 'attach_to_lead' | 'create_new' | undefined
+  const confirmAction = body.confirm_action;
   const existingLeadId = body.existing_lead_id;
 
   // ── 1. Check for duplicates ──
   if (!confirmAction) {
-    // Match by mobile_no
     const { data: contact } = await supabase.from('contacts').select('id').eq('mobile_no', body.mobile_no).single();
     if (contact) {
-      // Find leads associated with this contact
       const { data: leads } = await supabase
         .from('leads')
         .select('*, institute_contacts!inner(contacts(name, mobile_no), institutes(name, locations(district)))')
@@ -108,7 +133,6 @@ export async function POST(request: Request) {
         .limit(1);
 
       if (leads && leads.length > 0) {
-        // Format to match old duplicate structure for frontend
         const lead = leads[0];
         const instContact = Array.isArray(lead.institute_contacts) ? lead.institute_contacts[0] : lead.institute_contacts;
         
@@ -118,10 +142,10 @@ export async function POST(request: Request) {
           existing_lead: {
             id: lead.id,
             lead_id: lead.lead_seq_id,
-            contact_person: (instContact as any).contacts?.name,
-            institute_name: (instContact as any).institutes?.name,
-            district: (instContact as any).institutes?.locations?.district,
-            mobile_no: (instContact as any).contacts?.mobile_no,
+            contact_person: (instContact as Record<string, unknown> & { contacts?: { name?: string } }).contacts?.name,
+            institute_name: (instContact as Record<string, unknown> & { institutes?: { name?: string } }).institutes?.name,
+            district: (instContact as Record<string, unknown> & { institutes?: { locations?: { district?: string } } }).institutes?.locations?.district,
+            mobile_no: (instContact as Record<string, unknown> & { contacts?: { mobile_no?: string } }).contacts?.mobile_no,
             status: lead.status
           }
         });
@@ -145,7 +169,8 @@ export async function POST(request: Request) {
     p_challan_date: body.challan_date,
     p_specimens: body.specimens_given || [],
     p_confirm_action: confirmAction || null,
-    p_existing_lead_id: existingLeadId || null
+    p_existing_lead_id: existingLeadId || null,
+    p_lead_type: body.lead_type || null,
   };
 
   const { data: rpcResult, error: rpcError } = await supabase.rpc('create_challan_transaction', rpcPayload);

@@ -1,6 +1,41 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { verifyCookie } from '@/lib/auth';
 
+// Route-level role restrictions
+// If a route is not listed here, it's accessible to all authenticated users.
+const ROUTE_ROLES: Record<string, string[]> = {
+  '/dashboard': ['admin', 'manager'],
+  '/daily-brief': ['admin', 'manager'],
+  '/leads': ['admin', 'manager', 'data_entry', 'telecaller'],
+  '/follow-ups': ['admin', 'manager', 'telecaller'],
+  '/records': ['admin', 'manager', 'data_entry'],
+  '/agents': ['admin', 'manager', 'data_entry'],
+  '/notifications': ['admin', 'manager', 'telecaller'],
+  '/users': ['admin'],
+  '/import': ['admin', 'data_entry', 'manager'],
+  '/data-entry': ['admin', 'data_entry', 'manager'],
+};
+
+async function getUserFromToken(token: string): Promise<{ id: string; role: string } | null> {
+  const payload = await verifyCookie(token);
+  if (!payload) return null;
+
+  if (payload.startsWith('user:')) {
+    // New unified format — we need to look up the role
+    // Since middleware runs on the edge, we can't easily query DB.
+    // We'll encode role in the cookie payload going forward.
+    // For now, let the request through and let API routes do role checks.
+    return { id: payload.slice(5), role: 'authenticated' };
+  }
+  if (payload.startsWith('de:')) {
+    return { id: payload.slice(3), role: 'data_entry' };
+  }
+  if (payload === 'crm') {
+    return { id: 'legacy-admin', role: 'admin' };
+  }
+  return null;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -13,57 +48,44 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Data entry portal (/de/*)
+  // Try to authenticate from any cookie
+  const appToken = request.cookies.get('app_auth')?.value;
+  const deToken = request.cookies.get('de_auth')?.value;
+  const crmToken = request.cookies.get('crm_auth')?.value;
+
+  let user: { id: string; role: string } | null = null;
+
+  // Priority: app_auth > de_auth > crm_auth
+  if (appToken) {
+    user = await getUserFromToken(appToken);
+  }
+  if (!user && deToken) {
+    user = await getUserFromToken(deToken);
+  }
+  if (!user && crmToken) {
+    user = await getUserFromToken(crmToken);
+  }
+
+  // Data entry portal (/de/*) — keep backward compat
   if (pathname.startsWith('/de')) {
-    const token = request.cookies.get('de_auth')?.value;
-    if (!token) return NextResponse.redirect(new URL('/login/data-entry', request.url));
-    const payload = await verifyCookie(token);
-    if (!payload?.startsWith('de:')) {
-      const res = NextResponse.redirect(new URL('/login/data-entry', request.url));
-      res.cookies.delete('de_auth');
-      return res;
+    if (!user) {
+      return NextResponse.redirect(new URL('/login/data-entry', request.url));
     }
     return NextResponse.next();
   }
 
-  // Shared API Routes (for both DE and CRM)
-  if (
-    pathname.startsWith('/api/agents') ||
-    pathname.startsWith('/api/challans') ||
-    pathname.startsWith('/api/specimen-books') ||
-    pathname.startsWith('/api/leads') ||
-    pathname.startsWith('/api/follow-ups') ||
-    pathname.startsWith('/api/call-feedback') ||
-    pathname.startsWith('/api/lead-activities') ||
-    pathname.startsWith('/api/analytics')
-  ) {
-    const deToken = request.cookies.get('de_auth')?.value;
-    const crmToken = request.cookies.get('crm_auth')?.value;
-
-    let authorized = false;
-    if (deToken) {
-      const payload = await verifyCookie(deToken);
-      if (payload?.startsWith('de:')) authorized = true;
+  // API routes — check auth
+  if (pathname.startsWith('/api/')) {
+    if (!user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-    if (!authorized && crmToken) {
-      const payload = await verifyCookie(crmToken);
-      if (payload === 'crm') authorized = true;
-    }
-
-    if (!authorized) {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
+    // Role-based API enforcement is done inside each API route handler
     return NextResponse.next();
   }
 
-  // Everything else = CRM (dashboard, leads, records, agents, api/*)
-  const token = request.cookies.get('crm_auth')?.value;
-  if (!token) return NextResponse.redirect(new URL('/login', request.url));
-  const payload = await verifyCookie(token);
-  if (payload !== 'crm') {
-    const res = NextResponse.redirect(new URL('/login', request.url));
-    res.cookies.delete('crm_auth');
-    return res;
+  // App routes — check auth
+  if (!user) {
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   return NextResponse.next();

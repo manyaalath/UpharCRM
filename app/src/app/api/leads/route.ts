@@ -1,7 +1,18 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { getUserContext, getDistrictFilter } from '@/lib/rbac';
 
 export async function GET(request: Request) {
+  const ctx = await getUserContext(request);
+  if (!ctx) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
+  // Reps can only see their own leads (not implemented yet — stub for future)
+  if (ctx.role === 'rep') {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+  }
+
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
 
@@ -9,18 +20,36 @@ export async function GET(request: Request) {
   const limit = parseInt(searchParams.get('limit') || '20');
   const offset = (page - 1) * limit;
 
-  // Supabase inner join to filter nested relations easily
+  // Build query
   let query = supabase
     .from('leads')
-    .select('*, institute_contacts!inner(contacts(name, mobile_no), institutes!inner(name, locations!inner(district))), agents!inner(name)', { count: 'exact' })
+    .select('*, institute_contacts!inner(contacts(name, mobile_no), institutes!inner(name, locations!inner(district))), agents(name)', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
+  // Apply district scoping based on role
+  const districtFilter = getDistrictFilter(ctx);
+  if (districtFilter && districtFilter.length > 0) {
+    query = query.in('institute_contacts.institutes.locations.district', districtFilter);
+  } else if (districtFilter && districtFilter.length === 0) {
+    // Manager/telecaller with no assigned districts — return empty
+    return NextResponse.json({
+      data: [],
+      pagination: { page, limit, total: 0, total_pages: 0 }
+    });
+  }
+
+  // Apply additional filters
   if (searchParams.has('status')) {
     query = query.eq('status', searchParams.get('status'));
   }
   if (searchParams.has('district')) {
-    query = query.eq('institute_contacts.institutes.locations.district', searchParams.get('district'));
+    // Explicit district filter from UI — must still be within user's allowed districts
+    const requestedDistrict = searchParams.get('district')!;
+    if (districtFilter && !districtFilter.includes(requestedDistrict)) {
+      return NextResponse.json({ error: 'Access denied to this district' }, { status: 403 });
+    }
+    query = query.eq('institute_contacts.institutes.locations.district', requestedDistrict);
   }
   if (searchParams.has('agent_name')) {
     query = query.eq('agents.name', searchParams.get('agent_name'));
@@ -33,12 +62,6 @@ export async function GET(request: Request) {
   }
   if (searchParams.has('search')) {
     const s = searchParams.get('search');
-    // For nested text search in supabase JS, it's quite complex.
-    // As a workaround, we could rely on fetching all and filtering in memory or writing a custom SQL function.
-    // But Supabase JS supports doing simple nested filters if configured right. However, `or` across relationships is not fully supported in standard JS syntax easily.
-    // Let's do our best with what we have. A stored procedure would be better, but we will filter what we can.
-    // For now, we will do a basic approach: just fetch and let the frontend do the deep text search if needed, or we implement a fallback.
-    // We will do a generic search over the lead sequence ID.
     query = query.ilike('lead_seq_id', `%${s}%`);
   }
 

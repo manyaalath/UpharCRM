@@ -1,12 +1,118 @@
 import { Database } from './database.types';
 
 // ============================================================
-// Uphar CRM — Shared TypeScript Types (Normalized V4)
+// Uphar CRM — Shared TypeScript Types (Normalized V4 + RBAC V7)
 // ============================================================
 
 export type Tables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
 export type Inserts<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert'];
 export type Updates<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update'];
+
+// ---- RBAC Types ----
+export type UserRole = 'rep' | 'data_entry' | 'telecaller' | 'manager' | 'admin';
+
+export const USER_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'data_entry', label: 'Data Entry' },
+  { value: 'telecaller', label: 'Telecaller' },
+  { value: 'rep', label: 'Field Rep' },
+];
+
+export const USER_ROLE_COLORS: Record<UserRole, { bg: string; text: string; border: string }> = {
+  admin: { bg: 'bg-[#FEE2E2]', text: 'text-[#991B1B]', border: 'border-[#FCA5A5]' },
+  manager: { bg: 'bg-[#DBEAFE]', text: 'text-[#1E40AF]', border: 'border-[#93C5FD]' },
+  data_entry: { bg: 'bg-[#ECFDF5]', text: 'text-[#065F46]', border: 'border-[#6EE7B7]' },
+  telecaller: { bg: 'bg-[#FEF3C7]', text: 'text-[#92400E]', border: 'border-[#FCD34D]' },
+  rep: { bg: 'bg-[#F3F4F6]', text: 'text-[#374151]', border: 'border-[#D1D5DB]' },
+};
+
+export interface AppUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  status: string;
+  is_active: boolean;
+  districts: string[];
+  created_at: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actor_id: string;
+  action: string;
+  target_id: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+  actor_name?: string;
+}
+
+export interface DistrictAssignment {
+  id: string;
+  user_id: string;
+  district: string;
+  created_at: string;
+}
+
+// ---- Lead Type ----
+export type LeadType = 'teacher' | 'retail_salesperson' | 'shopkeeper' | 'institution';
+
+export const LEAD_TYPE_OPTIONS: { value: LeadType; label: string }[] = [
+  { value: 'teacher', label: 'Teacher' },
+  { value: 'retail_salesperson', label: 'Retail Salesperson' },
+  { value: 'shopkeeper', label: 'Shopkeeper' },
+  { value: 'institution', label: 'Institution' },
+];
+
+// ---- Import Types ----
+export interface ImportRow {
+  rowIndex: number;
+  leadName: string;
+  leadType: string;
+  phone: string;
+  altPhone?: string;
+  pincode: string;
+  district?: string;
+  instituteName: string;
+  repName: string;
+  visitDate: string;
+  bookTitle: string;
+  quantity: number;
+  remarks?: string;
+}
+
+export type ImportRowStatus = 'new' | 'duplicate' | 'error';
+
+export interface ImportValidationResult {
+  row: ImportRow;
+  status: ImportRowStatus;
+  errors: string[];
+  matchType?: 'phone_exact' | 'name_fuzzy' | 'within_file';
+  existingLead?: {
+    id: string;
+    lead_seq_id: string;
+    contactName: string;
+    instituteName: string;
+    district: string;
+    phone: string;
+    lastVisitDate?: string;
+    lastChallanBooks?: string[];
+    status: string;
+  };
+  action?: 'create_new' | 'attach_to_lead' | 'skip';
+}
+
+export interface ImportSummary {
+  importLogId: string;
+  filename: string;
+  totalRows: number;
+  rowsCreated: number;
+  rowsMerged: number;
+  rowsSkipped: number;
+  rowsErrored: number;
+  details: ImportValidationResult[];
+}
 
 // ---- Base Entities ----
 export type Location = Tables<'locations'>;
