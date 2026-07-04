@@ -2,10 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Challan } from '@/lib/types';
+import type { UserRole } from '@/lib/types';
 import { ALL_DISTRICTS } from '@/lib/constants';
+
+interface BookOption {
+  id: string;
+  title: string;
+}
 
 export default function RecordsClient({ initialData, totalCount, agents }: { initialData: Challan[], totalCount: number, agents?: string[] }) {
   const [challans, setChallans] = useState<Challan[]>(initialData);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [bookOptions, setBookOptions] = useState<BookOption[]>([]);
   
   // Filters
   const [search, setSearch] = useState('');
@@ -20,7 +28,23 @@ export default function RecordsClient({ initialData, totalCount, agents }: { ini
   const [total, setTotal] = useState(totalCount);
   const limit = 20;
 
-  const fetchChallans = useCallback(async (isExport = false) => {
+  useEffect(() => {
+    // Fetch current user role
+    fetch('/api/auth/me')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setUserRole(data.role as UserRole); })
+      .catch(() => {});
+  }, []);
+
+  // Fetch book options for filter dropdown
+  useEffect(() => {
+    fetch('/api/specimen-books')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.data) setBookOptions(data.data); })
+      .catch(() => {});
+  }, []);
+
+  const fetchChallans = useCallback(async () => {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (district) params.append('district', district);
@@ -29,19 +53,13 @@ export default function RecordsClient({ initialData, totalCount, agents }: { ini
     if (dateEnd) params.append('date_end', dateEnd);
     if (book) params.append('book', book);
     
-    if (isExport) {
-      params.append('limit', '999999');
-    } else {
-      params.append('page', page.toString());
-      params.append('limit', limit.toString());
-    }
+    params.append('page', page.toString());
+    params.append('limit', limit.toString());
 
     try {
       const res = await fetch(`/api/challans?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      
-      if (isExport) return data.data;
       
       setChallans(data.data || []);
       setTotal(data.pagination?.total || 0);
@@ -55,37 +73,36 @@ export default function RecordsClient({ initialData, totalCount, agents }: { ini
   }, [fetchChallans]);
 
   const handleExport = async () => {
-    const dataToExport = await fetchChallans(true);
-    if (!dataToExport || dataToExport.length === 0) {
-      alert('No data to export');
-      return;
+    // Build export URL with current filters
+    const params = new URLSearchParams();
+    params.append('type', 'leads');
+    if (district) params.append('district', district);
+    if (agentName) params.append('agent_name', agentName);
+    if (dateStart) params.append('date_start', dateStart);
+    if (dateEnd) params.append('date_end', dateEnd);
+
+    try {
+      const res = await fetch(`/api/export?${params.toString()}`);
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || 'Export failed');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `challans_export_${new Date().toISOString().split('T')[0]}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Export failed');
     }
-    
-    // Convert to CSV
-    const headers = ['Challan No', 'Date', 'Teacher Name', 'Institute', 'Mobile', 'Village/Town', 'District', 'Specimens Given', 'Representative'];
-    const rows = dataToExport.map((c: any) => [
-      c.challan_no,
-      c.challan_date,
-      `"${c.teacher_name || ''}"`,
-      `"${c.institute_name || ''}"`,
-      c.mobile_no,
-      `"${c.village_town || ''}"`,
-      `"${c.district || ''}"`,
-      `"${(c.specimens_given || []).join('; ')}"`,
-      `"${c.agent_name || ''}"`
-    ]);
-    
-    const csvContent = [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `challans_export_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
+
+  const canExport = userRole && !['rep', 'telecaller'].includes(userRole);
 
   return (
     <div className="p-6 flex-grow flex flex-col">
@@ -96,9 +113,11 @@ export default function RecordsClient({ initialData, totalCount, agents }: { ini
           <a href="/data-entry" className="px-4 py-2 bg-[#1E40AF] text-white text-[12px] font-semibold rounded hover:bg-blue-800 transition-colors flex items-center shadow-sm">
             <span className="material-symbols-outlined text-[18px] mr-1">add</span> New Challan
           </a>
-          <button onClick={handleExport} className="px-4 py-2 border border-[#1E40AF] text-[#1E40AF] text-[12px] font-semibold rounded hover:bg-blue-50 transition-colors flex items-center bg-white">
-            <span className="material-symbols-outlined text-[18px] mr-1">download</span> Export
-          </button>
+          {canExport && (
+            <button onClick={handleExport} className="px-4 py-2 border border-[#1E40AF] text-[#1E40AF] text-[12px] font-semibold rounded hover:bg-blue-50 transition-colors flex items-center bg-white">
+              <span className="material-symbols-outlined text-[18px] mr-1">download</span> Export
+            </button>
+          )}
         </div>
       </div>
 
@@ -115,13 +134,16 @@ export default function RecordsClient({ initialData, totalCount, agents }: { ini
           />
         </div>
         <div className="flex flex-col md:flex-row gap-2">
-          <input 
-            type="text" 
-            placeholder="Filter by Book Name" 
+          <select 
             value={book}
             onChange={e => { setBook(e.target.value); setPage(1); }}
-            className="border border-slate-200 rounded py-2 px-3 focus:border-[#1E40AF] focus:ring-2 focus:ring-[#DBEAFE] text-sm bg-white outline-none w-[180px]"
-          />
+            className="border border-slate-200 rounded py-2 px-3 focus:border-[#1E40AF] focus:ring-2 focus:ring-[#DBEAFE] text-sm bg-white outline-none min-w-[180px]"
+          >
+            <option value="">Book: All</option>
+            {bookOptions.map(b => (
+              <option key={b.id} value={b.title}>{b.title}</option>
+            ))}
+          </select>
           <div className="flex gap-1 border border-slate-200 rounded px-1 items-center bg-white w-min">
              <input type="date" value={dateStart} onChange={e => { setDateStart(e.target.value); setPage(1); }} className="p-1 text-sm bg-transparent outline-none max-w-[120px]" title="Start Date" />
              <span className="text-slate-400">-</span>

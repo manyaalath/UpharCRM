@@ -3,11 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import LeadDrawer from './LeadDrawer';
 import { LEAD_STATUS_COLORS, LEAD_STATUS_OPTIONS, Lead } from '@/lib/types';
+import type { UserRole } from '@/lib/types';
 import { ALL_DISTRICTS } from '@/lib/constants';
 
 export default function LeadsClient({ initialData, totalCount, agents }: { initialData: Lead[], totalCount: number, agents: string[] }) {
   const [leads, setLeads] = useState<Lead[]>(initialData);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   
   // Filters
   const [search, setSearch] = useState('');
@@ -22,7 +24,15 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
   const [total, setTotal] = useState(totalCount);
   const limit = 20;
 
-  const fetchLeads = useCallback(async (isExport = false) => {
+  useEffect(() => {
+    // Fetch current user role
+    fetch('/api/auth/me')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setUserRole(data.role as UserRole); })
+      .catch(() => {});
+  }, []);
+
+  const fetchLeads = useCallback(async () => {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (status) params.append('status', status);
@@ -31,19 +41,13 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
     if (dateStart) params.append('date_start', dateStart);
     if (dateEnd) params.append('date_end', dateEnd);
     
-    if (isExport) {
-      params.append('limit', '999999');
-    } else {
-      params.append('page', page.toString());
-      params.append('limit', limit.toString());
-    }
+    params.append('page', page.toString());
+    params.append('limit', limit.toString());
 
     try {
       const res = await fetch(`/api/leads?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      
-      if (isExport) return data.data;
       
       setLeads(data.data || []);
       setTotal(data.pagination?.total || 0);
@@ -57,36 +61,36 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
   }, [fetchLeads]);
 
   const handleExport = async () => {
-    const dataToExport = await fetchLeads(true);
-    if (!dataToExport || dataToExport.length === 0) {
-      alert('No data to export');
-      return;
+    // Build export URL with current filters
+    const params = new URLSearchParams();
+    params.append('type', 'leads');
+    if (district) params.append('district', district);
+    if (agentName) params.append('agent_name', agentName);
+    if (dateStart) params.append('date_start', dateStart);
+    if (dateEnd) params.append('date_end', dateEnd);
+
+    try {
+      const res = await fetch(`/api/export?${params.toString()}`);
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || 'Export failed');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `leads_export_${new Date().toISOString().split('T')[0]}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Export failed');
     }
-    
-    // Convert to CSV
-    const headers = ['Lead ID', 'Contact Person', 'Institute', 'Mobile', 'District', 'Status', 'Representative', 'Next Followup'];
-    const rows = dataToExport.map((l: any) => [
-      l.lead_id,
-      `"${l.contact_person || ''}"`,
-      `"${l.institute_name || ''}"`,
-      l.mobile_no,
-      `"${l.district || ''}"`,
-      l.status,
-      `"${l.agent_name || ''}"`,
-      l.next_followup_date || ''
-    ]);
-    
-    const csvContent = [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `leads_export_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
+
+  const canExport = userRole && !['rep', 'telecaller'].includes(userRole);
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
@@ -103,14 +107,12 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
           <hr className="w-16 h-[2px] bg-[#1E40AF] border-none absolute -bottom-1 left-0" />
         </div>
         <div className="flex gap-3 w-full sm:w-auto">
-          <button onClick={handleExport} className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-md text-slate-900 hover:bg-slate-50 transition-colors text-[13px] font-semibold w-full sm:w-auto shadow-sm">
-            <span className="material-symbols-outlined text-[18px]">download</span>
-            Export
-          </button>
-          <button className="flex items-center justify-center gap-2 px-4 py-2 bg-[#FBBF24] rounded-md text-[#78350F] font-bold hover:bg-[#F59E0B] transition-colors text-[13px] w-full sm:w-auto shadow-md">
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            Add Lead
-          </button>
+          {canExport && (
+            <button onClick={handleExport} className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-md text-slate-900 hover:bg-slate-50 transition-colors text-[13px] font-semibold w-full sm:w-auto shadow-sm">
+              <span className="material-symbols-outlined text-[18px]">download</span>
+              Export
+            </button>
+          )}
         </div>
       </div>
 

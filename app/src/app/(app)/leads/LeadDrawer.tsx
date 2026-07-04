@@ -15,12 +15,21 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   status_changed: { icon: 'sync', color: '#6B7280' },
 };
 
+interface LeadBook {
+  id: string;
+  title: string;
+  total_quantity: number;
+  challans: { challan_no: string; challan_date: string; quantity: number }[];
+}
+
 export default function LeadDrawer({ lead, onClose }: { lead: any; onClose: () => void }) {
   const drawerRef = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useState<'timeline' | 'feedback'>('timeline');
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [feedbackHistory, setFeedbackHistory] = useState<CallFeedback[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [leadBooks, setLeadBooks] = useState<LeadBook[]>([]);
+  const [loadingBooks, setLoadingBooks] = useState(false);
 
   // Call feedback form state
   const [callOutcome, setCallOutcome] = useState<CallOutcome | ''>('');
@@ -39,13 +48,24 @@ export default function LeadDrawer({ lead, onClose }: { lead: any; onClose: () =
     return () => window.removeEventListener('keydown', handleEsc);
   }, [onClose]);
 
-  // Fetch activities and feedback when lead changes
+  // Fetch activities, feedback, and books when lead changes
   useEffect(() => {
     if (lead) {
       fetchActivities(lead.id);
       fetchFeedback(lead.id);
+      fetchBooks(lead.id);
     }
   }, [lead]);
+
+  const fetchBooks = async (leadId: string) => {
+    setLoadingBooks(true);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/books`);
+      const data = await res.json();
+      if (data.data) setLeadBooks(data.data);
+    } catch { /* ignore */ }
+    finally { setLoadingBooks(false); }
+  };
 
   const fetchActivities = async (leadId: string) => {
     setLoadingActivities(true);
@@ -173,6 +193,35 @@ export default function LeadDrawer({ lead, onClose }: { lead: any; onClose: () =
             </div>
           </div>
 
+          {/* Books Distributed Section */}
+          {loadingBooks ? (
+            <div className="bg-white border border-slate-200 shadow-sm rounded-lg p-4">
+              <div className="h-4 w-32 bg-slate-200 rounded animate-pulse" />
+            </div>
+          ) : leadBooks.length > 0 && (
+            <div className="bg-white border border-slate-200 shadow-sm rounded-lg p-4">
+              <h4 className="text-[12px] font-semibold text-[#1E40AF] uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px]">menu_book</span>
+                Books Distributed ({leadBooks.length})
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {leadBooks.map(book => (
+                  <div
+                    key={book.id}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#DBEAFE] text-[#1E40AF] rounded-full text-[12px] font-semibold border border-[#93C5FD]"
+                    title={book.challans.map(c => `${c.challan_no} (${c.challan_date}): qty ${c.quantity}`).join('\n')}
+                  >
+                    <span className="material-symbols-outlined text-[14px]">book</span>
+                    {book.title}
+                    <span className="bg-[#1E40AF] text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold min-w-[20px] text-center">
+                      ×{book.total_quantity}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Section Tabs */}
           <div className="flex gap-1 bg-white border border-slate-200 rounded-lg p-1">
             <button
@@ -295,16 +344,13 @@ export default function LeadDrawer({ lead, onClose }: { lead: any; onClose: () =
           )}
         </div>
 
-        {/* Drawer Footer Actions */}
         <div className="p-3 border-t border-slate-200 bg-white sticky bottom-0 flex gap-2">
-          <button className="flex-1 py-2 px-3 bg-white border border-slate-200 rounded-md text-slate-900 hover:bg-slate-50 transition-colors text-[12px] font-semibold">
-            Edit Lead
-          </button>
           <button
             onClick={() => setActiveSection('feedback')}
-            className="flex-1 py-2 px-3 bg-[#1E40AF] rounded-md text-white hover:bg-[#1E3A8A] transition-colors text-[12px] font-semibold shadow-md"
+            className="flex-1 py-2 px-3 bg-[#1E40AF] rounded-md text-white hover:bg-[#1E3A8A] transition-colors text-[12px] font-semibold shadow-md flex items-center justify-center gap-2"
           >
-            Log Call
+            <span className="material-symbols-outlined text-[16px]">call</span>
+            Log Call Feedback
           </button>
         </div>
       </div>

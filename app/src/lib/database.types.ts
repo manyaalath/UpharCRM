@@ -187,18 +187,21 @@ export type Database = {
           created_at: string | null
           id: string
           mobile_no: string
+          alt_mobile_no: string | null
           name: string
         }
         Insert: {
           created_at?: string | null
           id?: string
           mobile_no: string
+          alt_mobile_no?: string | null
           name: string
         }
         Update: {
           created_at?: string | null
           id?: string
           mobile_no?: string
+          alt_mobile_no?: string | null
           name?: string
         }
         Relationships: []
@@ -210,6 +213,8 @@ export type Database = {
           id: string
           name: string
           password_hash: string
+          role: string
+          is_active: boolean
           status: string
         }
         Insert: {
@@ -218,6 +223,8 @@ export type Database = {
           id?: string
           name: string
           password_hash: string
+          role?: string
+          is_active?: boolean
           status?: string
         }
         Update: {
@@ -226,9 +233,122 @@ export type Database = {
           id?: string
           name?: string
           password_hash?: string
+          role?: string
+          is_active?: boolean
           status?: string
         }
         Relationships: []
+      }
+      district_assignments: {
+        Row: {
+          id: string
+          user_id: string
+          district: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          district: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          district?: string
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "district_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "data_entry_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_log: {
+        Row: {
+          id: string
+          actor_id: string
+          action: string
+          target_id: string | null
+          details: Json
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          actor_id: string
+          action: string
+          target_id?: string | null
+          details?: Json
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          actor_id?: string
+          action?: string
+          target_id?: string | null
+          details?: Json
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "data_entry_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_logs: {
+        Row: {
+          id: string
+          user_id: string
+          filename: string
+          total_rows: number
+          rows_created: number
+          rows_merged: number
+          rows_skipped: number
+          rows_errored: number
+          details: Json
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          filename: string
+          total_rows?: number
+          rows_created?: number
+          rows_merged?: number
+          rows_skipped?: number
+          rows_errored?: number
+          details?: Json
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          filename?: string
+          total_rows?: number
+          rows_created?: number
+          rows_merged?: number
+          rows_skipped?: number
+          rows_errored?: number
+          details?: Json
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "data_entry_users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       follow_ups: {
         Row: {
@@ -408,6 +528,7 @@ export type Database = {
           institute_contact_id: string
           last_contact_date: string | null
           lead_seq_id: string
+          lead_type: string | null
           next_followup_date: string | null
           status: string
           updated_at: string | null
@@ -419,6 +540,7 @@ export type Database = {
           institute_contact_id: string
           last_contact_date?: string | null
           lead_seq_id: string
+          lead_type?: string | null
           next_followup_date?: string | null
           status?: string
           updated_at?: string | null
@@ -430,6 +552,7 @@ export type Database = {
           institute_contact_id?: string
           last_contact_date?: string | null
           lead_seq_id?: string
+          lead_type?: string | null
           next_followup_date?: string | null
           status?: string
           updated_at?: string | null

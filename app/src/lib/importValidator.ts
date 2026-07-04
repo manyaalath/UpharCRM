@@ -317,7 +317,7 @@ export async function validateImportRows(rows: ImportRow[]): Promise<ImportValid
     // Check fuzzy name + district match
     const fuzzyMatch = nameDistrictLeads.find(l =>
       isFuzzyMatch(l.name, row.leadName) &&
-      (l.district.toLowerCase() === (row.district || '').toLowerCase() || row.pincode === l.phone /* placeholder — actually match district */)
+      ((l.district || '').toLowerCase() === (row.district || '').toLowerCase() || row.pincode === l.phone /* placeholder — actually match district */)
     );
 
     if (fuzzyMatch) {

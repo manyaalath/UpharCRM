@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import type { UserRole } from '@/lib/types';
+import { USER_ROLE_COLORS } from '@/lib/types';
 
 interface DEUser {
   id: string;
@@ -17,17 +19,39 @@ export default function TopNav() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [pendingUsers, setPendingUsers] = useState<DEUser[]>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [userName, setUserName] = useState<string>('');
   const router = useRouter();
   const notifRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchPending();
+    // Fetch current user info
+    fetch('/api/auth/me')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) {
+          setUserRole(data.role as UserRole);
+          setUserName(data.name || '');
+        } else {
+          setUserRole('admin');
+          setUserName('Admin');
+        }
+      })
+      .catch(() => {
+        setUserRole('admin');
+        setUserName('Admin');
+      });
   }, []);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setShowNotifications(false);
+      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
       }
     }
     document.addEventListener('mousedown', handleClick);
@@ -68,13 +92,25 @@ export default function TopNav() {
     router.refresh();
   };
 
+  const roleColors = userRole ? USER_ROLE_COLORS[userRole] : null;
+
   return (
     <header className="md:hidden flex justify-between items-center px-6 py-3 w-full bg-white border-b border-slate-200 sticky top-0 z-50">
       <div className="font-bold text-[24px] text-[#1E40AF] leading-tight" style={{ fontFamily: "'Noto Sans Devanagari', sans-serif" }}>
         उपहार प्रकाशन
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex items-center gap-2">
+        {/* User info badge */}
+        {userRole && (
+          <div className="hidden sm:flex items-center gap-2 mr-1">
+            <span className="text-[12px] font-semibold text-slate-700 truncate max-w-[100px]">{userName}</span>
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold ${roleColors?.bg || ''} ${roleColors?.text || ''} border ${roleColors?.border || ''}`}>
+              {userRole.replace('_', ' ').toUpperCase()}
+            </span>
+          </div>
+        )}
+
         {/* Notifications Bell */}
         <div className="relative" ref={notifRef}>
           <button
@@ -133,7 +169,7 @@ export default function TopNav() {
         </div>
 
         {/* Account menu */}
-        <div className="relative">
+        <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowMenu(!showMenu)}
             className="p-2 text-slate-500 hover:text-[#1E40AF] transition-colors rounded-lg hover:bg-slate-50"
@@ -141,7 +177,16 @@ export default function TopNav() {
             <span className="material-symbols-outlined">account_circle</span>
           </button>
           {showMenu && (
-            <div className="absolute right-0 top-12 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[160px] z-50">
+            <div className="absolute right-0 top-12 bg-white border border-slate-200 rounded-xl shadow-xl py-2 min-w-[200px] z-50">
+              {/* Mobile-only user info */}
+              {userRole && (
+                <div className="sm:hidden px-4 py-2 border-b border-slate-100 mb-1">
+                  <p className="text-[13px] font-semibold text-slate-800 truncate">{userName}</p>
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold mt-1 ${roleColors?.bg || ''} ${roleColors?.text || ''} border ${roleColors?.border || ''}`}>
+                    {userRole.replace('_', ' ').toUpperCase()}
+                  </span>
+                </div>
+              )}
               <button
                 onClick={handleLogout}
                 className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"

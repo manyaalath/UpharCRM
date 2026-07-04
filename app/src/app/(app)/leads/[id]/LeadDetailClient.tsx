@@ -17,11 +17,20 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   status_changed: { icon: 'sync', color: '#6B7280' },
 };
 
+interface LeadBook {
+  id: string;
+  title: string;
+  total_quantity: number;
+  challans: { challan_no: string; challan_date: string; quantity: number }[];
+}
+
 export default function LeadDetailClient({ lead }: { lead: any }) {
   const [activeSection, setActiveSection] = useState<'timeline' | 'feedback'>('timeline');
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [feedbackHistory, setFeedbackHistory] = useState<CallFeedback[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [leadBooks, setLeadBooks] = useState<LeadBook[]>([]);
+  const [loadingBooks, setLoadingBooks] = useState(false);
 
   // Call feedback form state
   const [callOutcome, setCallOutcome] = useState<CallOutcome | ''>('');
@@ -35,8 +44,19 @@ export default function LeadDetailClient({ lead }: { lead: any }) {
     if (lead) {
       fetchActivities(lead.id);
       fetchFeedback(lead.id);
+      fetchBooks(lead.id);
     }
   }, [lead]);
+
+  const fetchBooks = async (leadId: string) => {
+    setLoadingBooks(true);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/books`);
+      const data = await res.json();
+      if (data.data) setLeadBooks(data.data);
+    } catch { /* ignore */ }
+    finally { setLoadingBooks(false); }
+  };
 
   const fetchActivities = async (leadId: string) => {
     setLoadingActivities(true);
@@ -151,6 +171,36 @@ export default function LeadDetailClient({ lead }: { lead: any }) {
               </div>
             </div>
           </div>
+
+          {/* Books Distributed */}
+          {loadingBooks ? (
+            <div className="bg-white border border-slate-200 shadow-sm rounded-lg p-5">
+              <div className="h-4 w-40 bg-slate-200 rounded animate-pulse" />
+            </div>
+          ) : leadBooks.length > 0 && (
+            <div className="bg-white border border-slate-200 shadow-sm rounded-lg p-5">
+              <h4 className="text-[13px] font-bold text-[#1E40AF] uppercase tracking-wider mb-4 flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px]">menu_book</span>
+                Books Distributed ({leadBooks.length})
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {leadBooks.map(book => (
+                  <div
+                    key={book.id}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#DBEAFE] text-[#1E40AF] rounded-lg text-[13px] font-semibold border border-[#93C5FD] hover:bg-[#BFDBFE] transition-colors cursor-default"
+                    title={book.challans.map(c => `Challan ${c.challan_no} (${c.challan_date}): qty ${c.quantity}`).join('\n')}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">book</span>
+                    {book.title}
+                    <span className="bg-[#1E40AF] text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold min-w-[22px] text-center">
+                      ×{book.total_quantity}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-3">Hover over a book to see challan details</p>
+            </div>
+          )}
         </div>
 
         {/* Right Column: Tabs (Timeline / Feedback) */}

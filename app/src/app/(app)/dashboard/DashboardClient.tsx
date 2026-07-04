@@ -217,6 +217,28 @@ export default function DashboardClient() {
             </span>
           )}
           <button
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/export?type=analytics&analytics_type=all');
+                if (!res.ok) { alert('Export failed'); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', `analytics_export_${new Date().toISOString().split('T')[0]}.xlsx`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+              } catch { alert('Export failed'); }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 text-[12px] font-semibold hover:bg-slate-50 transition-colors"
+            title="Export analytics as Excel"
+          >
+            <span className="material-symbols-outlined text-[16px]">download</span>
+            Export
+          </button>
+          <button
             onClick={() => fetchData(true)}
             disabled={isRefreshing}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 text-[12px] font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50"

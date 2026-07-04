@@ -291,9 +291,9 @@ export default function DEDataEntryPage() {
 
   // Filter specimen books based on search
   const filteredSpecimenBooks = specimenBooks.filter(book => {
-    const searchLower = specimenSearch.toLowerCase();
-    const nameMatch = book.name.toLowerCase().includes(searchLower);
-    const codeMatch = book.book_code?.toLowerCase().includes(searchLower);
+    const searchLower = (specimenSearch || '').toLowerCase();
+    const nameMatch = (book?.name || '').toLowerCase().includes(searchLower);
+    const codeMatch = (book?.book_code || '').toLowerCase().includes(searchLower);
     return nameMatch || codeMatch;
   });
 
