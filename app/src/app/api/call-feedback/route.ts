@@ -1,15 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import { getUserContext } from '@/lib/rbac';
-
-const ALLOWED_ROLES = ['admin', 'manager', 'telecaller'];
 
 export async function GET(request: Request) {
-  const ctx = await getUserContext(request);
-  if (!ctx || !ALLOWED_ROLES.includes(ctx.role)) {
-    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
-  }
-
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
 
@@ -30,11 +22,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const ctx = await getUserContext(request);
-  if (!ctx || !ALLOWED_ROLES.includes(ctx.role)) {
-    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
-  }
-
   const supabase = await createClient();
   const body = await request.json();
 

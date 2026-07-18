@@ -6,7 +6,7 @@ import type { ImportValidationResult } from '@/lib/types';
 
 type Step = 'upload' | 'review' | 'committing' | 'summary';
 
-export default function ImportPage() {
+export default function BulkImportLeads() {
   const [step, setStep] = useState<Step>('upload');
   const [filename, setFilename] = useState('');
   const [results, setResults] = useState<ImportValidationResult[]>([]);
@@ -127,11 +127,11 @@ export default function ImportPage() {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto">
+    <div className="w-full max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Import Leads & Challans</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Import Leads &amp; Challans</h1>
           <p className="text-sm text-slate-500 mt-1">Upload an Excel file to bulk-create leads and challans</p>
         </div>
         <a

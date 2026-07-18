@@ -4,6 +4,7 @@ import { Lead, LEAD_STATUS_COLORS, LEAD_STATUS_OPTIONS, LeadActivity, CallFeedba
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import LeadAiSummary from './LeadAiSummary';
+// import LeadWhatsApp from './LeadWhatsApp'; // parked — see WHATSAPP_INTEGRATION.md
 
 const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   lead_created: { icon: 'person_add', color: '#6366F1' },
@@ -15,6 +16,9 @@ const ACTIVITY_ICONS: Record<string, { icon: string; color: string }> = {
   suggestion_received: { icon: 'lightbulb', color: '#F59E0B' },
   complaint_received: { icon: 'report', color: '#EF4444' },
   status_changed: { icon: 'sync', color: '#6B7280' },
+  whatsapp_sent: { icon: 'chat', color: '#25D366' },
+  whatsapp_reply: { icon: 'reply', color: '#059669' },
+  whatsapp_no_response: { icon: 'timer', color: '#F59E0B' },
 };
 
 interface LeadBook {
@@ -201,6 +205,10 @@ export default function LeadDetailClient({ lead }: { lead: any }) {
               <p className="text-[11px] text-slate-400 mt-3">Hover over a book to see challan details</p>
             </div>
           )}
+
+          {/* WhatsApp workflow — parked until Meta integration is live, see WHATSAPP_INTEGRATION.md.
+              Re-enable: uncomment the line below (and flip WHATSAPP_ENABLED=true in .env). */}
+          {/* <LeadWhatsApp leadId={lead.id} onChange={() => fetchActivities(lead.id)} /> */}
         </div>
 
         {/* Right Column: Tabs (Timeline / Feedback) */}

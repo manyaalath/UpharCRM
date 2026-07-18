@@ -3,14 +3,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import LeadDrawer from './LeadDrawer';
 import { LEAD_STATUS_COLORS, LEAD_STATUS_OPTIONS, Lead } from '@/lib/types';
-import type { UserRole } from '@/lib/types';
 import { ALL_DISTRICTS } from '@/lib/constants';
 
 export default function LeadsClient({ initialData, totalCount, agents }: { initialData: Lead[], totalCount: number, agents: string[] }) {
   const [leads, setLeads] = useState<Lead[]>(initialData);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [userRole, setUserRole] = useState<UserRole | null>(null);
-  
+
   // Filters
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -18,19 +16,11 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
   const [agentName, setAgentName] = useState('');
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
-  
+
   // Pagination
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(totalCount);
   const limit = 20;
-
-  useEffect(() => {
-    // Fetch current user role
-    fetch('/api/auth/me')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setUserRole(data.role as UserRole); })
-      .catch(() => {});
-  }, []);
 
   const fetchLeads = useCallback(async () => {
     const params = new URLSearchParams();
@@ -90,7 +80,7 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
     }
   };
 
-  const canExport = userRole && !['rep', 'telecaller'].includes(userRole);
+  const canExport = true;
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
@@ -211,6 +201,23 @@ export default function LeadsClient({ initialData, totalCount, agents }: { initi
                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-[12px] font-bold ${colors.bg} ${colors.text} border ${colors.border}`}>
                         {LEAD_STATUS_OPTIONS.find(o => o.value === lead.status)?.label || lead.status}
                       </span>
+                      {lead.whatsapp_status && lead.whatsapp_status !== 'not_sent' && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="material-symbols-outlined text-[11px]">chat</span>
+                            {String(lead.whatsapp_status).replace('_', ' ')}
+                          </span>
+                          {lead.reply_status && lead.reply_status !== 'awaiting' && (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${
+                              lead.reply_status === 'positive' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : lead.reply_status === 'negative' ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                              {String(lead.reply_status).replace('_', ' ')}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-900 text-[14px]">
                       {lead.next_followup_date ? (

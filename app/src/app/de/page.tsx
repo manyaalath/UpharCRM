@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Challan, Lead } from '@/lib/types';
+import BulkImportLeads from './BulkImportLeads';
 
 import { BIHAR_DISTRICTS, JHARKHAND_DISTRICTS } from '@/lib/constants';
 
@@ -125,7 +126,8 @@ export default function DEDataEntryPage() {
   const [success, setSuccess] = useState(false);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [recentEntries, setRecentEntries] = useState<Challan[]>([]);
-  const [specimenBooks, setSpecimenBooks] = useState<{ id: string; name: string; book_code: string | null }[]>([]);
+  const [specimenBooks, setSpecimenBooks] = useState<{ id: string; title: string }[]>([]);
+  const [view, setView] = useState<'entry' | 'import'>('entry');
 
   // Duplicate detection state
   const [duplicateModal, setDuplicateModal] = useState<{
@@ -152,6 +154,9 @@ export default function DEDataEntryPage() {
   const [mobileNo, setMobileNo] = useState('');
   const [mobileError, setMobileError] = useState('');
   const [agentName, setAgentName] = useState('');
+  const [showAddRep, setShowAddRep] = useState(false);
+  const [newRepName, setNewRepName] = useState('');
+  const [savingRep, setSavingRep] = useState(false);
   const [specimens, setSpecimens] = useState<string[]>([]);
   
   // Specimen Search State
@@ -282,19 +287,12 @@ export default function DEDataEntryPage() {
     setShowSpecimenDropdown(false);
   };
 
-  const getBookDisplayName = (book: { name: string; book_code: string | null }) => {
-    if (book.book_code) {
-      return `${book.book_code} - ${book.name}`;
-    }
-    return book.name;
-  };
+  const getBookDisplayName = (book: { title: string }) => book.title;
 
   // Filter specimen books based on search
   const filteredSpecimenBooks = specimenBooks.filter(book => {
     const searchLower = (specimenSearch || '').toLowerCase();
-    const nameMatch = (book?.name || '').toLowerCase().includes(searchLower);
-    const codeMatch = (book?.book_code || '').toLowerCase().includes(searchLower);
-    return nameMatch || codeMatch;
+    return (book?.title || '').toLowerCase().includes(searchLower);
   });
 
   // Effective district value to send to API
@@ -322,6 +320,33 @@ export default function DEDataEntryPage() {
     setSuccess(false);
     setDuplicateModal(null);
     setPendingSubmission(null);
+  };
+
+  const handleAddRep = async () => {
+    const name = newRepName.trim();
+    if (!name) return;
+    setSavingRep(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to add representative');
+        return;
+      }
+      await fetchAgents();
+      setAgentName(name); // auto-select the newly added rep
+      setNewRepName('');
+      setShowAddRep(false);
+    } catch {
+      setError('Failed to add representative');
+    } finally {
+      setSavingRep(false);
+    }
   };
 
   const buildPayload = (confirmAction?: string, existingLeadId?: string) => {
@@ -449,6 +474,29 @@ export default function DEDataEntryPage() {
 
   return (
     <div className="flex-grow flex flex-col items-center pb-10 pt-6 px-4 w-full max-w-full">
+      {/* View tabs */}
+      <div className="w-full max-w-[720px] flex gap-1 mb-6">
+        <button
+          type="button"
+          onClick={() => setView('entry')}
+          className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold transition-colors flex items-center justify-center gap-1.5 ${view === 'entry' ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+        >
+          <span className="material-symbols-outlined text-[18px]">edit_note</span>
+          New Entry
+        </button>
+        <button
+          type="button"
+          onClick={() => setView('import')}
+          className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold transition-colors flex items-center justify-center gap-1.5 ${view === 'import' ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+        >
+          <span className="material-symbols-outlined text-[18px]">upload_file</span>
+          Bulk Import
+        </button>
+      </div>
+
+      {view === 'import' && <BulkImportLeads />}
+
+      {view === 'entry' && (
       <div className="w-full max-w-[720px] flex flex-col gap-8">
         <div className="mb-2">
           <h1 className="text-[28px] font-bold text-slate-900 leading-tight">New Challan Entry</h1>
@@ -722,10 +770,7 @@ export default function DEDataEntryPage() {
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <div className="flex flex-col">
-                              {book.book_code && <span className="text-[10px] font-mono text-slate-400">{book.book_code}</span>}
-                              <span>{book.name}</span>
-                            </div>
+                            <span>{book.title}</span>
                             {isSelected && <span className="material-symbols-outlined text-[16px] text-amber-500">check</span>}
                           </div>
                         </div>
@@ -764,7 +809,17 @@ export default function DEDataEntryPage() {
 
             {/* Representative */}
             <div className="flex flex-col gap-1 md:col-span-2">
-              <label className="text-[13px] font-semibold text-slate-700">Assigned Representative</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[13px] font-semibold text-slate-700">Assigned Representative</label>
+                <button
+                  type="button"
+                  onClick={() => { setShowAddRep(v => !v); setNewRepName(''); }}
+                  className="text-[12px] font-semibold text-amber-600 hover:text-amber-700 flex items-center gap-0.5"
+                >
+                  <span className="material-symbols-outlined text-[16px]">{showAddRep ? 'close' : 'add'}</span>
+                  {showAddRep ? 'Cancel' : 'Add New'}
+                </button>
+              </div>
               <select
                 value={agentName}
                 onChange={(e) => setAgentName(e.target.value)}
@@ -776,6 +831,28 @@ export default function DEDataEntryPage() {
                   <option key={a.id} value={a.name}>{a.name}</option>
                 ))}
               </select>
+
+              {showAddRep && (
+                <div className="flex gap-2 mt-2">
+                  <input
+                    type="text"
+                    value={newRepName}
+                    onChange={(e) => setNewRepName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddRep(); } }}
+                    autoFocus
+                    placeholder="New representative name"
+                    className="flex-1 bg-white border border-amber-300 rounded px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddRep}
+                    disabled={savingRep || !newRepName.trim()}
+                    className="px-4 py-2 bg-amber-500 text-white rounded text-[13px] font-bold hover:bg-amber-600 transition-colors shadow-sm disabled:opacity-50 shrink-0"
+                  >
+                    {savingRep ? 'Adding...' : 'Add'}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
@@ -832,6 +909,7 @@ export default function DEDataEntryPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Duplicate Contact Modal */}
       {duplicateModal && (

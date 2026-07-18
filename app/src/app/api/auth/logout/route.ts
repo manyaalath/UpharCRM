@@ -8,6 +8,8 @@ export async function POST(request: NextRequest) {
   if (type === 'de') {
     res.cookies.delete('de_auth');
     res.cookies.delete('app_auth');
+  } else if (type === 'book') {
+    res.cookies.delete('book_auth');
   } else if (type === 'crm') {
     res.cookies.delete('crm_auth');
     res.cookies.delete('app_auth');
@@ -15,6 +17,7 @@ export async function POST(request: NextRequest) {
     // Clear all
     res.cookies.delete('crm_auth');
     res.cookies.delete('de_auth');
+    res.cookies.delete('book_auth');
     res.cookies.delete('app_auth');
   }
 

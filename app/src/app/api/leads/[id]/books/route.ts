@@ -1,16 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import { getUserContext } from '@/lib/rbac';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ctx = await getUserContext(request);
-  if (!ctx) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-  }
-
   const { id: leadId } = await params;
   const supabase = await createClient();
 

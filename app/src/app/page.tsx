@@ -19,7 +19,7 @@ export default function LandingPage() {
       </div>
 
       {/* Cards */}
-      <div className="flex flex-col sm:flex-row gap-6 w-full max-w-xl">
+      <div className="flex flex-col sm:flex-row gap-6 w-full max-w-3xl">
         {/* CRM Card */}
         <Link
           href="/login"
@@ -60,6 +60,28 @@ export default function LandingPage() {
             Challan entry for field operators
           </p>
           <div className="mt-6 px-6 py-2 bg-amber-500 text-white rounded-lg text-[13px] font-semibold group-hover:bg-amber-600 transition-colors">
+            Enter Portal
+          </div>
+        </Link>
+
+        {/* Books Card */}
+        <Link
+          href="/login/books"
+          className="flex-1 group bg-white border border-slate-200 rounded-xl p-8 shadow-sm hover:shadow-md hover:border-indigo-400/50 transition-all duration-200 flex flex-col items-center text-center"
+        >
+          <div className="w-14 h-14 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+            <span
+              className="material-symbols-outlined text-indigo-600 text-[28px]"
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
+              menu_book
+            </span>
+          </div>
+          <h2 className="text-[18px] font-bold text-slate-900 mb-2">Books Login</h2>
+          <p className="text-[13px] text-slate-500 leading-relaxed">
+            Add and manage the book catalog
+          </p>
+          <div className="mt-6 px-6 py-2 bg-indigo-600 text-white rounded-lg text-[13px] font-semibold group-hover:bg-indigo-700 transition-colors">
             Enter Portal
           </div>
         </Link>

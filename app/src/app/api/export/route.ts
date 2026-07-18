@@ -1,30 +1,19 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getUserContext, getDistrictFilter } from '@/lib/rbac';
 import * as XLSX from 'xlsx';
 
 // GET /api/export?type=leads|analytics|import-log&...
 export async function GET(request: Request) {
-  const ctx = await getUserContext(request);
-  if (!ctx) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-  }
-
-  // Rep and telecaller cannot export
-  if (['rep', 'telecaller'].includes(ctx.role)) {
-    return NextResponse.json({ error: 'Insufficient permissions to export' }, { status: 403 });
-  }
-
   const { searchParams } = new URL(request.url);
   const exportType = searchParams.get('type') || 'leads';
 
   switch (exportType) {
     case 'leads':
-      return exportLeads(request, ctx, searchParams);
+      return exportLeads(request, searchParams);
     case 'analytics':
-      return exportAnalytics(request, ctx, searchParams);
+      return exportAnalytics(request, searchParams);
     case 'import-log':
-      return exportImportLog(request, ctx, searchParams);
+      return exportImportLog(request, searchParams);
     default:
       return NextResponse.json({ error: 'Invalid export type' }, { status: 400 });
   }
@@ -32,11 +21,9 @@ export async function GET(request: Request) {
 
 async function exportLeads(
   request: Request,
-  ctx: Awaited<ReturnType<typeof getUserContext>> & {},
   searchParams: URLSearchParams
 ) {
   const supabase = await createClient();
-  const districtFilter = getDistrictFilter(ctx);
 
   // Build query — no pagination, get all matching rows
   let query = supabase
@@ -44,19 +31,9 @@ async function exportLeads(
     .select('challan_no, challan_date, leads!inner(lead_seq_id, status, lead_type, institute_contacts!inner(contacts(name, mobile_no, alt_mobile_no), institutes!inner(name, address_line, village_town, locality, locations!inner(district, pincode, state)))), agents(name), challan_books(books(title), quantity)')
     .order('challan_date', { ascending: false });
 
-  // Apply district scoping
-  if (districtFilter && districtFilter.length > 0) {
-    query = query.in('leads.institute_contacts.institutes.locations.district', districtFilter);
-  } else if (districtFilter && districtFilter.length === 0) {
-    return generateEmptyXlsx('No data — no districts assigned');
-  }
-
   // Additional filters
   const requestedDistrict = searchParams.get('district');
   if (requestedDistrict) {
-    if (districtFilter && !districtFilter.includes(requestedDistrict)) {
-      return NextResponse.json({ error: 'Access denied to this district' }, { status: 403 });
-    }
     query = query.eq('leads.institute_contacts.institutes.locations.district', requestedDistrict);
   }
   if (searchParams.has('agent_name')) {
@@ -129,7 +106,7 @@ async function exportLeads(
   const wb = XLSX.utils.book_new();
 
   // Add filter info header
-  const filterInfo = buildFilterInfo(searchParams, ctx);
+  const filterInfo = buildFilterInfo(searchParams);
   const titleRow = [['Uphar CRM — Leads/Challans Export'], [filterInfo], ['Generated: ' + new Date().toISOString()], []];
   const ws = XLSX.utils.aoa_to_sheet(titleRow);
   XLSX.utils.sheet_add_json(ws, rows, { origin: 'A5' });
@@ -155,15 +132,13 @@ async function exportLeads(
 
 async function exportAnalytics(
   request: Request,
-  ctx: Awaited<ReturnType<typeof getUserContext>> & {},
   searchParams: URLSearchParams
 ) {
   const supabase = await createClient();
-  const districtFilter = getDistrictFilter(ctx);
   const analyticsType = searchParams.get('analytics_type') || 'district';
 
   const wb = XLSX.utils.book_new();
-  const filterInfo = buildFilterInfo(searchParams, ctx);
+  const filterInfo = buildFilterInfo(searchParams);
   const titleRows = [['Uphar CRM — Analytics Export'], [filterInfo], ['Generated: ' + new Date().toISOString()], []];
 
   if (analyticsType === 'district' || analyticsType === 'all') {
@@ -172,10 +147,7 @@ async function exportAnalytics(
       .from('mv_district_stats')
       .select('*');
 
-    let filteredStats = districtStats || [];
-    if (districtFilter && districtFilter.length > 0) {
-      filteredStats = filteredStats.filter(s => districtFilter.includes(s.district));
-    }
+    const filteredStats = districtStats || [];
 
     const ws = XLSX.utils.aoa_to_sheet(titleRows);
     XLSX.utils.sheet_add_json(ws, filteredStats.map(s => ({
@@ -245,7 +217,6 @@ async function exportAnalytics(
 
 async function exportImportLog(
   request: Request,
-  ctx: Awaited<ReturnType<typeof getUserContext>> & {},
   searchParams: URLSearchParams
 ) {
   const logId = searchParams.get('id');
@@ -304,26 +275,11 @@ async function exportImportLog(
   });
 }
 
-function buildFilterInfo(searchParams: URLSearchParams, ctx: NonNullable<Awaited<ReturnType<typeof getUserContext>>>): string {
+function buildFilterInfo(searchParams: URLSearchParams): string {
   const parts: string[] = [];
   if (searchParams.get('district')) parts.push(`District: ${searchParams.get('district')}`);
   if (searchParams.get('agent_name')) parts.push(`Rep: ${searchParams.get('agent_name')}`);
   if (searchParams.get('date_start')) parts.push(`From: ${searchParams.get('date_start')}`);
   if (searchParams.get('date_end')) parts.push(`To: ${searchParams.get('date_end')}`);
-  parts.push(`User: ${ctx.name} (${ctx.role})`);
   return parts.length > 0 ? `Filters: ${parts.join(' | ')}` : 'No filters applied';
-}
-
-function generateEmptyXlsx(message: string) {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([[message]]);
-  XLSX.utils.book_append_sheet(wb, ws, 'Empty');
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  return new NextResponse(buf, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename="uphar_export_empty.xlsx"',
-    },
-  });
 }

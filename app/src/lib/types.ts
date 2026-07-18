@@ -8,46 +8,6 @@ export type Tables<T extends keyof Database['public']['Tables']> = Database['pub
 export type Inserts<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert'];
 export type Updates<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update'];
 
-// ---- RBAC Types ----
-export type UserRole = 'rep' | 'data_entry' | 'telecaller' | 'manager' | 'admin';
-
-export const USER_ROLE_OPTIONS: { value: UserRole; label: string }[] = [
-  { value: 'admin', label: 'Admin' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'data_entry', label: 'Data Entry' },
-  { value: 'telecaller', label: 'Telecaller' },
-  { value: 'rep', label: 'Field Rep' },
-];
-
-export const USER_ROLE_COLORS: Record<UserRole, { bg: string; text: string; border: string }> = {
-  admin: { bg: 'bg-[#FEE2E2]', text: 'text-[#991B1B]', border: 'border-[#FCA5A5]' },
-  manager: { bg: 'bg-[#DBEAFE]', text: 'text-[#1E40AF]', border: 'border-[#93C5FD]' },
-  data_entry: { bg: 'bg-[#ECFDF5]', text: 'text-[#065F46]', border: 'border-[#6EE7B7]' },
-  telecaller: { bg: 'bg-[#FEF3C7]', text: 'text-[#92400E]', border: 'border-[#FCD34D]' },
-  rep: { bg: 'bg-[#F3F4F6]', text: 'text-[#374151]', border: 'border-[#D1D5DB]' },
-};
-
-export interface AppUser {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  status: string;
-  is_active: boolean;
-  districts: string[];
-  created_at: string;
-}
-
-export interface AuditLogEntry {
-  id: string;
-  actor_id: string;
-  action: string;
-  target_id: string | null;
-  details: Record<string, unknown>;
-  created_at: string;
-  actor_name?: string;
-}
-
 export interface DistrictAssignment {
   id: string;
   user_id: string;

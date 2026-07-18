@@ -21,6 +21,7 @@ interface FollowUpItem {
   challan_no: string | null;
   followup_date: string;
   status: string;
+  kind?: string | null;
   remarks: string | null;
   assigned_rep: string | null;
   completed_date: string | null;
@@ -505,6 +506,15 @@ export default function FollowUpsClient() {
                       <td className="py-3 px-4">
                         <div className="text-[13px] font-semibold text-slate-900">{contact_person}</div>
                         <div className="text-[10px] font-mono text-slate-400 mt-0.5">{lead?.lead_seq_id || ''}</div>
+                        {item.kind && item.kind !== 'standard' && (
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold mt-1 border ${
+                            item.kind === 'concern' ? 'bg-red-50 text-red-700 border-red-200'
+                              : item.kind === 'reminder' ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}>
+                            {item.kind}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-4">
                         <div className="text-[13px] text-slate-700">{institute_name}</div>

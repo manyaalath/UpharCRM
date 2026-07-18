@@ -1,15 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getUserContext } from '@/lib/rbac';
 import { parseExcelRow, validateImportRows } from '@/lib/importValidator';
 import type { ImportRow } from '@/lib/types';
 
 // POST /api/import — Validate uploaded rows
 export async function POST(request: Request) {
-  const ctx = await getUserContext(request);
-  if (!ctx || !['data_entry', 'manager', 'admin'].includes(ctx.role)) {
-    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
-  }
-
   const body = await request.json();
   const { rows: rawRows } = body;
 

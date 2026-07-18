@@ -5,68 +5,31 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingMessage, setPendingMessage] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setPendingMessage(false);
 
     try {
-      // Try unified login first
-      if (email) {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
-        });
+      const res = await fetch('/api/auth/crm-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
 
-        const data = await res.json();
-
-        if (data.status === 'pending') {
-          setPendingMessage(true);
-          setLoading(false);
-          return;
-        }
-
-        if (res.ok && data.status === 'approved') {
-          // Route based on role
-          const role = data.user?.role;
-          if (role === 'data_entry') {
-            router.push('/records');
-          } else if (role === 'telecaller') {
-            router.push('/follow-ups');
-          } else {
-            router.push('/dashboard');
-          }
-          router.refresh();
-          return;
-        }
-
-        setError(data.error || 'Login failed');
-      } else {
-        // Legacy password-only CRM login
-        const res = await fetch('/api/auth/crm-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password }),
-        });
-
-        if (res.ok) {
-          router.push('/dashboard');
-          router.refresh();
-          return;
-        }
-
-        const data = await res.json();
-        setError(data.error || 'Invalid password');
+      if (res.ok) {
+        router.push('/dashboard');
+        router.refresh();
+        return;
       }
+
+      const data = await res.json();
+      setError(data.error || 'Invalid password');
     } catch {
       setError('Something went wrong. Try again.');
     } finally {
@@ -96,16 +59,6 @@ export default function LoginPage() {
 
         {/* Form */}
         <div className="px-8 pb-10">
-          {pendingMessage && (
-            <div className="mb-5 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
-              <div className="flex items-center gap-2 font-semibold mb-1">
-                <span className="material-symbols-outlined text-[18px]">hourglass_top</span>
-                Account Pending Approval
-              </div>
-              <p className="text-xs text-amber-700">Your account is awaiting admin approval. You&apos;ll be able to log in once approved.</p>
-            </div>
-          )}
-
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             {error && (
               <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
@@ -115,24 +68,13 @@ export default function LoginPage() {
             )}
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoFocus
-                placeholder="your.email@company.com"
-                className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 text-[15px] transition-all"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoFocus
                 placeholder="Enter your password"
                 className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 text-[15px] transition-all"
               />

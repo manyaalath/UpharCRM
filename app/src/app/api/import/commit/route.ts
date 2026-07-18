@@ -1,16 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getUserContext, logAudit } from '@/lib/rbac';
 import { normalizePhone, normalizeLeadType } from '@/lib/importValidator';
 import type { ImportValidationResult } from '@/lib/types';
 
 // POST /api/import/commit — Commit resolved import rows
 export async function POST(request: Request) {
-  const ctx = await getUserContext(request);
-  if (!ctx || !['data_entry', 'manager', 'admin'].includes(ctx.role)) {
-    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
-  }
-
   const body = await request.json();
   const { filename, resolvedRows } = body as {
     filename: string;
@@ -140,7 +134,7 @@ export async function POST(request: Request) {
   const { data: importLog } = await supabase
     .from('import_logs')
     .insert({
-      user_id: ctx.userId === 'legacy-admin' ? null : ctx.userId,
+      user_id: null,
       filename: filename || 'unknown.xlsx',
       total_rows: resolvedRows.length,
       rows_created: rowsCreated,
@@ -151,16 +145,6 @@ export async function POST(request: Request) {
     })
     .select('id')
     .single();
-
-  // Audit
-  await logAudit(ctx.userId, 'import_committed', importLog?.id, {
-    filename,
-    total: resolvedRows.length,
-    created: rowsCreated,
-    merged: rowsMerged,
-    skipped: rowsSkipped,
-    errored: rowsErrored,
-  });
 
   return NextResponse.json({
     success: true,

@@ -1,26 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import { getUserContext, getDistrictFilter } from '@/lib/rbac';
 
 export async function GET(request: Request) {
-  const ctx = await getUserContext(request);
-  if (!ctx) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-  }
-
-  // Only admin, manager, telecaller can access follow-ups
-  if (!['admin', 'manager', 'telecaller'].includes(ctx.role)) {
-    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
-  }
-
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
-  const districtFilter = getDistrictFilter(ctx);
-
-  // Manager/telecaller with no assigned districts — return empty
-  if (districtFilter && districtFilter.length === 0) {
-    return NextResponse.json({ data: [] });
-  }
 
   const leadId = searchParams.get('lead_id');
   const status = searchParams.get('status'); // pending, overdue, completed, rescheduled
@@ -35,20 +18,9 @@ export async function GET(request: Request) {
     .lt('followup_date', today)
     .eq('status', 'pending');
 
-  // Use inner join for district filtering when needed
-  const needsDistrictFilter = districtFilter && districtFilter.length > 0;
-  const selectClause = needsDistrictFilter
-    ? `*,
-      leads!inner(
-        id, lead_seq_id, status,
-        institute_contacts!inner(
-          contacts(name, mobile_no),
-          institutes!inner(name, locations!inner(district))
-        ),
-        agents(name)
-      ),
-      agents(name)`
-    : `*,
+  let query = supabase
+    .from('follow_ups')
+    .select(`*,
       leads:lead_id (
         id, lead_seq_id, status,
         institute_contacts!inner(
@@ -57,17 +29,8 @@ export async function GET(request: Request) {
         ),
         agents(name)
       ),
-      agents(name)`;
-
-  let query = supabase
-    .from('follow_ups')
-    .select(selectClause)
+      agents(name)`)
     .order('followup_date', { ascending: true });
-
-  // Apply district scoping
-  if (needsDistrictFilter) {
-    query = query.in('leads.institute_contacts.institutes.locations.district', districtFilter!);
-  }
 
   if (leadId) query = query.eq('lead_id', leadId);
   if (status) query = query.eq('status', status);

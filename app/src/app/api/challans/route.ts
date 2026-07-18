@@ -1,40 +1,20 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import { getUserContext, getDistrictFilter } from '@/lib/rbac';
+import { triggerLeadWhatsApp } from '@/lib/whatsapp/service';
 
 export async function GET(request: Request) {
-  const ctx = await getUserContext(request);
-  if (!ctx) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-  }
-
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
-  
+
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '20');
   const offset = (page - 1) * limit;
 
-  // Determine if we need district filtering
-  const districtFilter = getDistrictFilter(ctx);
   const requestedDistrict = searchParams.get('district');
-
-  // Check permission for explicit district requests
-  if (requestedDistrict && districtFilter && !districtFilter.includes(requestedDistrict)) {
-    return NextResponse.json({ error: 'Access denied to this district' }, { status: 403 });
-  }
-
-  // Manager/telecaller with no assigned districts — return empty
-  if (districtFilter && districtFilter.length === 0) {
-    return NextResponse.json({
-      data: [],
-      pagination: { page, limit, total: 0, total_pages: 0 }
-    });
-  }
 
   let query;
 
-  if (requestedDistrict || (districtFilter && districtFilter.length > 0)) {
+  if (requestedDistrict) {
     // Need inner joins for district filtering
     query = supabase
       .from('challans')
@@ -42,11 +22,7 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (requestedDistrict) {
-      query = query.eq('leads.institute_contacts.institutes.locations.district', requestedDistrict);
-    } else if (districtFilter && districtFilter.length > 0) {
-      query = query.in('leads.institute_contacts.institutes.locations.district', districtFilter);
-    }
+    query = query.eq('leads.institute_contacts.institutes.locations.district', requestedDistrict);
   } else {
     // No district filter — full access
     query = supabase
@@ -95,16 +71,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const ctx = await getUserContext(request);
-  if (!ctx) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-  }
-
-  // Only data_entry, manager, admin can create challans
-  if (!['data_entry', 'manager', 'admin'].includes(ctx.role)) {
-    return NextResponse.json({ error: 'Insufficient permissions to create challans' }, { status: 403 });
-  }
-
   const supabase = await createClient();
   const body = await request.json();
 
@@ -181,6 +147,16 @@ export async function POST(request: Request) {
 
   if (rpcResult && !rpcResult.success) {
     return NextResponse.json({ error: rpcResult.error || 'Transaction failed', detail: rpcResult.detail }, { status: 500 });
+  }
+
+  // Fire the WhatsApp confirmation for the generated lead (best-effort, idempotent,
+  // stub-safe). Never let a messaging hiccup fail the challan save.
+  if (rpcResult?.lead_id) {
+    try {
+      await triggerLeadWhatsApp(rpcResult.lead_id);
+    } catch (e) {
+      console.error('WhatsApp trigger failed:', e);
+    }
   }
 
   return NextResponse.json({ success: true, challan_id: rpcResult?.challan_id });

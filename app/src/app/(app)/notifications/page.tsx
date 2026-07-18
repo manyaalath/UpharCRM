@@ -11,31 +11,35 @@ interface DEUser {
 }
 
 type Filter = 'all' | 'pending' | 'approved' | 'rejected';
+type Portal = 'data_entry' | 'books';
 
 export default function NotificationsPage() {
   const [users, setUsers] = useState<DEUser[]>([]);
+  const [portal, setPortal] = useState<Portal>('data_entry');
   const [filter, setFilter] = useState<Filter>('pending');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  const endpoint = portal === 'books' ? '/api/book-requests' : '/api/de-requests';
+
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const url = filter === 'all' ? '/api/de-requests' : `/api/de-requests?status=${filter}`;
+      const url = filter === 'all' ? endpoint : `${endpoint}?status=${filter}`;
       const res = await fetch(url);
       const data = await res.json();
-      if (data.data) setUsers(data.data);
+      if (data.data) setUsers(data.data); else setUsers([]);
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, endpoint]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
   const handleAction = async (id: string, action: 'approve' | 'reject') => {
     setActionLoading(id);
     try {
-      await fetch('/api/de-requests', {
+      await fetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, action }),
@@ -66,8 +70,28 @@ export default function NotificationsPage() {
     <div className="flex-grow flex flex-col items-center pb-24 md:pb-8 pt-4 md:pt-8 px-4 w-full">
       <div className="w-full max-w-[720px] flex flex-col gap-6">
         <div>
-          <h1 className="text-[28px] font-bold text-slate-900">Data Entry Access Requests</h1>
+          <h1 className="text-[28px] font-bold text-slate-900">Access Requests</h1>
           <hr className="h-[3px] bg-[#1E40AF] border-none mt-2 w-full rounded-full" />
+        </div>
+
+        {/* Portal toggle */}
+        <div className="flex gap-2 bg-slate-100 p-1 rounded-xl w-fit">
+          <button
+            onClick={() => setPortal('data_entry')}
+            className={`px-4 py-1.5 rounded-lg text-[13px] font-semibold transition-colors ${
+              portal === 'data_entry' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Data Entry Portal
+          </button>
+          <button
+            onClick={() => setPortal('books')}
+            className={`px-4 py-1.5 rounded-lg text-[13px] font-semibold transition-colors ${
+              portal === 'books' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Books Portal
+          </button>
         </div>
 
         {/* Filter tabs */}

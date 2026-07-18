@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Challan } from '@/lib/types';
-import type { UserRole } from '@/lib/types';
 import { ALL_DISTRICTS } from '@/lib/constants';
 
 interface BookOption {
@@ -12,7 +11,6 @@ interface BookOption {
 
 export default function RecordsClient({ initialData, totalCount, agents }: { initialData: Challan[], totalCount: number, agents?: string[] }) {
   const [challans, setChallans] = useState<Challan[]>(initialData);
-  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [bookOptions, setBookOptions] = useState<BookOption[]>([]);
   
   // Filters
@@ -27,14 +25,6 @@ export default function RecordsClient({ initialData, totalCount, agents }: { ini
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(totalCount);
   const limit = 20;
-
-  useEffect(() => {
-    // Fetch current user role
-    fetch('/api/auth/me')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setUserRole(data.role as UserRole); })
-      .catch(() => {});
-  }, []);
 
   // Fetch book options for filter dropdown
   useEffect(() => {
@@ -102,7 +92,7 @@ export default function RecordsClient({ initialData, totalCount, agents }: { ini
     }
   };
 
-  const canExport = userRole && !['rep', 'telecaller'].includes(userRole);
+  const canExport = true;
 
   return (
     <div className="p-6 flex-grow flex flex-col">

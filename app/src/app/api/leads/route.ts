@@ -1,18 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-import { getUserContext, getDistrictFilter } from '@/lib/rbac';
 
 export async function GET(request: Request) {
-  const ctx = await getUserContext(request);
-  if (!ctx) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-  }
-
-  // Reps can only see their own leads (not implemented yet — stub for future)
-  if (ctx.role === 'rep') {
-    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
-  }
-
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
 
@@ -27,29 +16,12 @@ export async function GET(request: Request) {
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
-  // Apply district scoping based on role
-  const districtFilter = getDistrictFilter(ctx);
-  if (districtFilter && districtFilter.length > 0) {
-    query = query.in('institute_contacts.institutes.locations.district', districtFilter);
-  } else if (districtFilter && districtFilter.length === 0) {
-    // Manager/telecaller with no assigned districts — return empty
-    return NextResponse.json({
-      data: [],
-      pagination: { page, limit, total: 0, total_pages: 0 }
-    });
-  }
-
-  // Apply additional filters
+  // Apply filters
   if (searchParams.has('status')) {
     query = query.eq('status', searchParams.get('status'));
   }
   if (searchParams.has('district')) {
-    // Explicit district filter from UI — must still be within user's allowed districts
-    const requestedDistrict = searchParams.get('district')!;
-    if (districtFilter && !districtFilter.includes(requestedDistrict)) {
-      return NextResponse.json({ error: 'Access denied to this district' }, { status: 403 });
-    }
-    query = query.eq('institute_contacts.institutes.locations.district', requestedDistrict);
+    query = query.eq('institute_contacts.institutes.locations.district', searchParams.get('district')!);
   }
   if (searchParams.has('agent_name')) {
     query = query.eq('agents.name', searchParams.get('agent_name'));
