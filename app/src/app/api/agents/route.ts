@@ -19,13 +19,17 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const body = await request.json();
 
-  if (!body.name) {
+  const name = String(body.name || '').trim().replace(/\s+/g, ' ');
+  if (!name) {
     return NextResponse.json({ error: 'Representative name is required' }, { status: 422 });
+  }
+  if (name.length > 100) {
+    return NextResponse.json({ error: 'Name must be under 100 characters' }, { status: 422 });
   }
 
   const { data, error } = await supabase
     .from('agents')
-    .insert([{ name: body.name }])
+    .insert([{ name }])
     .select('id, name')
     .single();
 

@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { handleInboundReply } from '@/lib/whatsapp/service';
+import { simulateAllowed } from '@/lib/whatsapp/meta';
 
 // POST /api/whatsapp/simulate — dev/test helper.
 // Simulates an inbound WhatsApp reply for a lead so the branching workflow can be
 // exercised without a live provider. Body: { lead_id, reply: 'received' | 'not_received' | <text> }
 export async function POST(request: Request) {
+  if (!simulateAllowed()) {
+    return NextResponse.json({ error: 'Reply simulation is disabled while WhatsApp is live' }, { status: 403 });
+  }
   const supabase = await createClient();
   const { lead_id, reply } = await request.json();
 

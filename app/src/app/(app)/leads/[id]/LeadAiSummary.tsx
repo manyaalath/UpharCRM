@@ -1,6 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { ChevronDown, Sparkles } from 'lucide-react';
+import { Badge, Button, cn, type Tone } from '@/components/ui';
+import { formatDateTime } from '@/lib/date';
 
 interface AiSummaryData {
   summary: string;
@@ -11,123 +14,96 @@ interface AiSummaryData {
   priority_level: string;
 }
 
+const SENTIMENT_TONE: Record<string, Tone> = { positive: 'ok', neutral: 'neutral', negative: 'bad', 'at risk': 'bad' };
+const PRIORITY_TONE: Record<string, Tone> = { high: 'bad', medium: 'warn', low: 'neutral' };
+
+// AI read of the lead's history. Collapsed until asked for — it costs an API call.
 export default function LeadAiSummary({ leadId }: { leadId: string }) {
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<AiSummaryData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; setup?: boolean } | null>(null);
 
-  const generateSummary = async () => {
+  const generate = async () => {
+    setOpen(true);
     setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/ai/lead-summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lead_id: leadId })
+        body: JSON.stringify({ lead_id: leadId }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to fetch AI summary');
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError({ message: json.error || 'Could not generate a summary', setup: json.code === 'ai_not_configured' });
+        return;
+      }
       setData(json.data);
-    } catch (err: any) {
-      setError(err.message);
+      setGeneratedAt(json.generated_at || new Date().toISOString());
+    } catch {
+      setError({ message: 'Could not reach the server' });
     } finally {
       setLoading(false);
     }
   };
 
-  const getSentimentColor = (s: string) => {
-    switch (s.toLowerCase()) {
-      case 'positive': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'negative': return 'bg-rose-100 text-rose-800 border-rose-200';
-      case 'at risk': return 'bg-red-100 text-red-800 border-red-200';
-      default: return 'bg-slate-100 text-slate-800 border-slate-200';
-    }
-  };
-
-  const getPriorityColor = (p: string) => {
-    switch (p.toLowerCase()) {
-      case 'high': return 'bg-red-100 text-red-800 border-red-200';
-      case 'medium': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'low': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      default: return 'bg-slate-100 text-slate-800 border-slate-200';
-    }
-  };
-
   return (
-    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 shadow-sm rounded-lg p-5 relative overflow-hidden">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[16px] font-bold text-indigo-900 flex items-center gap-2">
-          <span className="material-symbols-outlined text-indigo-600">auto_awesome</span>
-          AI Lead Summary
-        </h3>
-        {!data && !loading && (
-          <button 
-            onClick={generateSummary}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-[12px] font-bold py-1.5 px-3 rounded shadow-sm transition-colors flex items-center gap-1"
-          >
-            <span className="material-symbols-outlined text-[14px]">bolt</span>
-            Generate Insights
-          </button>
-        )}
+    <div className="border-t border-line">
+      <div className="flex items-center justify-between gap-2 px-4 h-11">
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className="flex items-center gap-1.5 text-[13px] font-semibold text-ink"
+          aria-expanded={open}
+        >
+          <Sparkles className="size-3.5 text-ink-3" />
+          AI read
+          <ChevronDown className={cn('size-3.5 text-ink-3 transition-transform', open && 'rotate-180')} />
+        </button>
+        <div className="flex items-center gap-2">
+          {generatedAt && <span className="text-[11.5px] text-ink-3">{formatDateTime(generatedAt)}</span>}
+          <Button size="sm" variant={data ? 'ghost' : 'secondary'} onClick={generate} loading={loading}>
+            {data ? 'Refresh' : 'Generate'}
+          </Button>
+        </div>
       </div>
 
-      {loading && (
-        <div className="flex flex-col items-center justify-center py-6 text-indigo-400">
-          <span className="material-symbols-outlined animate-spin text-[32px] mb-2">sync</span>
-          <p className="text-[13px] animate-pulse">Analyzing lead history...</p>
-        </div>
-      )}
+      {open && (
+        <div className="px-4 pb-4">
+          {loading && !data && <p className="text-[12.5px] text-ink-3">Reading call and visit history…</p>}
 
-      {error && (
-        <div className="bg-red-50 text-red-600 p-3 rounded text-[13px] border border-red-100">
-          {error}
-        </div>
-      )}
+          {error && (
+            <p className={cn('text-[12.5px]', error.setup ? 'text-ink-2' : 'text-bad')}>{error.message}</p>
+          )}
 
-      {data && !loading && (
-        <div className="space-y-4 animate-in fade-in duration-500">
-          <p className="text-[14px] text-slate-800 leading-relaxed">
-            {data.summary}
-          </p>
+          {!loading && !error && !data && (
+            <p className="text-[12.5px] text-ink-3">Summarises visits, calls and complaints and suggests the next step.</p>
+          )}
 
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-white rounded-md p-3 border border-indigo-100 shadow-sm flex flex-col items-center text-center">
-              <span className="text-[11px] text-slate-500 uppercase font-bold tracking-wider mb-1">Engagement</span>
-              <span className="text-[20px] font-black text-indigo-700">{data.engagement_score}/10</span>
+          {data && (
+            <div className={cn('space-y-3', loading && 'opacity-60')}>
+              <p className="text-[13px] leading-relaxed text-ink">{data.summary}</p>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge tone="neutral">Engagement <span className="font-mono">{data.engagement_score}/10</span></Badge>
+                <Badge tone={SENTIMENT_TONE[data.sentiment?.toLowerCase()] || 'neutral'}>{data.sentiment}</Badge>
+                <Badge tone={PRIORITY_TONE[data.priority_level?.toLowerCase()] || 'neutral'}>{data.priority_level} priority</Badge>
+              </div>
+
+              <div className="rounded-md bg-sunken px-3 py-2.5">
+                <p className="text-[11.5px] font-medium text-ink-3">Next step</p>
+                <p className="mt-0.5 text-[13px] font-medium text-ink">{data.next_best_action}</p>
+              </div>
+
+              {data.recommendations?.length > 0 && (
+                <ul className="space-y-1 text-[12.5px] text-ink-2 list-disc pl-4 marker:text-ink-3">
+                  {data.recommendations.map((r, i) => <li key={i}>{r}</li>)}
+                </ul>
+              )}
             </div>
-            <div className="bg-white rounded-md p-3 border border-indigo-100 shadow-sm flex flex-col items-center text-center justify-center">
-              <span className="text-[11px] text-slate-500 uppercase font-bold tracking-wider mb-1">Sentiment</span>
-              <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full border ${getSentimentColor(data.sentiment)}`}>
-                {data.sentiment}
-              </span>
-            </div>
-            <div className="bg-white rounded-md p-3 border border-indigo-100 shadow-sm flex flex-col items-center text-center justify-center">
-              <span className="text-[11px] text-slate-500 uppercase font-bold tracking-wider mb-1">Priority</span>
-              <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full border ${getPriorityColor(data.priority_level)}`}>
-                {data.priority_level}
-              </span>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-md p-4 border border-indigo-100 shadow-sm">
-            <h4 className="text-[13px] font-bold text-slate-800 mb-2 flex items-center gap-1">
-              <span className="material-symbols-outlined text-[16px] text-emerald-600">lightbulb</span>
-              Next Best Action
-            </h4>
-            <p className="text-[14px] text-slate-700 font-medium text-emerald-800 bg-emerald-50 p-2 rounded">
-              {data.next_best_action}
-            </p>
-            
-            <h4 className="text-[13px] font-bold text-slate-800 mt-4 mb-2">Recommendations</h4>
-            <ul className="space-y-2">
-              {data.recommendations.map((rec, i) => (
-                <li key={i} className="flex gap-2 text-[13px] text-slate-700">
-                  <span className="material-symbols-outlined text-[14px] text-indigo-400 mt-0.5">check_circle</span>
-                  {rec}
-                </li>
-              ))}
-            </ul>
-          </div>
+          )}
         </div>
       )}
     </div>

@@ -1,526 +1,523 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
+import { ArrowRight, Download, FileSpreadsheet, RotateCcw, Upload } from 'lucide-react';
+import { Badge, Button, EmptyState, Panel, PanelHeader, Select, Stat, StatStrip, buttonClass, cn } from '@/components/ui';
 import type { ImportValidationResult } from '@/lib/types';
+import { downloadFromApi } from '@/lib/download';
+import { formatDate } from '@/lib/date';
 
-type Step = 'upload' | 'review' | 'committing' | 'summary';
+type Step = 'upload' | 'review' | 'done';
+type Action = 'create_new' | 'attach_to_lead' | 'skip';
+type Bucket = 'duplicates' | 'errors' | 'new';
+
+interface CommitResult {
+  importLogId: string | null;
+  logError?: string;
+  summary: { totalRows: number; rowsCreated: number; rowsMerged: number; rowsSkipped: number; rowsErrored: number };
+  details: Array<{ rowIndex: number; status: string; message: string }>;
+}
+
+const REQUIRED_COLUMNS = ['Lead Name', 'Lead Type', 'Phone Number', 'Pincode', 'Rep Name', 'Visit Date'];
+const BOOK_COLUMNS = ['Book Titles Given (Specimens)', 'Book Title'];
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
+
+// The export sheet has title rows above the header, so find the header row
+// (the first row that mentions "Phone Number") instead of assuming row 1.
+function readRows(buf: ArrayBuffer): { rows: Record<string, unknown>[]; headers: string[] } {
+  const wb = XLSX.read(buf, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const grid = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '', blankrows: false });
+  const headerIdx = grid.slice(0, 15).findIndex(r => Array.isArray(r) && r.some(c => norm(String(c)) === 'phonenumber'));
+  if (headerIdx === -1) return { rows: [], headers: [] };
+  const headers = (grid[headerIdx] as unknown[]).map(h => String(h).trim());
+  const rows = grid.slice(headerIdx + 1).map(r => {
+    const obj: Record<string, unknown> = {};
+    headers.forEach((h, i) => { if (h) obj[h] = (r as unknown[])[i] ?? ''; });
+    return obj;
+  });
+  // Drop blank rows and the template's example row.
+  const nonBlank = rows.filter(r => Object.values(r).some(v => String(v).trim() !== ''));
+  return { rows: nonBlank.filter(r => !String(r['Lead Name'] ?? '').trim().toUpperCase().startsWith('EXAMPLE')), headers };
+}
+
+const MATCH_LABEL: Record<string, { label: string; tone: 'warn' | 'info' | 'neutral' }> = {
+  phone_exact: { label: 'Same phone', tone: 'warn' },
+  name_fuzzy: { label: 'Similar name, same district', tone: 'info' },
+  within_file: { label: 'Repeated line in file', tone: 'neutral' },
+};
 
 export default function BulkImportLeads() {
   const [step, setStep] = useState<Step>('upload');
   const [filename, setFilename] = useState('');
   const [results, setResults] = useState<ImportValidationResult[]>([]);
-  const [summary, setSummary] = useState<{ total: number; newCount: number; duplicateCount: number; errorCount: number } | null>(null);
-  const [commitSummary, setCommitSummary] = useState<{ totalRows: number; rowsCreated: number; rowsMerged: number; rowsSkipped: number; rowsErrored: number; importLogId?: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [bucket, setBucket] = useState<Bucket>('duplicates');
+  const [parsing, setParsing] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const [commit, setCommit] = useState<CommitResult | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  // Parse uploaded file and send to validation API
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setError('');
-    setLoading(true);
+  const handleFile = async (file: File) => {
+    setUploadError('');
+    setParsing(true);
     setFilename(file.name);
-
     try {
-      const data = await file.arrayBuffer();
-      const wb = XLSX.read(data, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const jsonRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-
-      if (jsonRows.length === 0) {
-        setError('The uploaded file has no data rows.');
-        setLoading(false);
+      const { rows, headers } = readRows(await file.arrayBuffer());
+      if (!headers.length) {
+        setUploadError('Could not find the header row. Use the template — the header must include “Phone Number”.');
+        return;
+      }
+      const have = new Set(headers.map(norm));
+      const missing = REQUIRED_COLUMNS.filter(c => !have.has(norm(c)));
+      if (!BOOK_COLUMNS.some(c => have.has(norm(c)))) missing.push(BOOK_COLUMNS[0]);
+      if (missing.length) {
+        setUploadError(`Missing columns: ${missing.join(', ')}. Download the template for the exact headers.`);
+        return;
+      }
+      if (!rows.length) {
+        setUploadError('The file has no data rows (the example row is ignored).');
         return;
       }
 
-      // Check required columns
-      const headers = Object.keys(jsonRows[0] as Record<string, unknown>);
-      const requiredCols = ['Lead Name', 'Phone Number', 'Lead Type'];
-      const missingCols = requiredCols.filter(c =>
-        !headers.some(h => h.toLowerCase().replace(/[_\s]/g, '') === c.toLowerCase().replace(/[_\s]/g, ''))
-      );
-
-      if (missingCols.length > 0) {
-        setError(`Missing required columns: ${missingCols.join(', ')}. Please use the provided template.`);
-        setLoading(false);
-        return;
-      }
-
-      // Send to validation API
       const res = await fetch('/api/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: jsonRows }),
+        body: JSON.stringify({ rows }),
       });
-
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const errData = await res.json();
-        setError(errData.error || 'Validation failed');
-        setLoading(false);
+        setUploadError(data.error || 'Validation failed');
         return;
       }
-
-      const validationData = await res.json();
-      setResults(validationData.results);
-      setSummary(validationData.summary);
+      const list: ImportValidationResult[] = data.results || [];
+      setResults(list);
+      setBucket(list.some(r => r.status === 'duplicate') ? 'duplicates' : list.some(r => r.status === 'error') ? 'errors' : 'new');
       setStep('review');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to parse file');
+      setUploadError(err instanceof Error ? `Could not read the file: ${err.message}` : 'Could not read the file');
     } finally {
-      setLoading(false);
+      setParsing(false);
+      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
-  // Update a specific row's action
-  const updateRowAction = (rowIndex: number, action: 'create_new' | 'attach_to_lead' | 'skip') => {
-    setResults(prev => prev.map(r =>
-      r.row.rowIndex === rowIndex ? { ...r, action } : r
-    ));
-  };
+  const counts = useMemo(() => ({
+    new: results.filter(r => r.status === 'new').length,
+    duplicates: results.filter(r => r.status === 'duplicate').length,
+    errors: results.filter(r => r.status === 'error').length,
+  }), [results]);
 
-  // Check if all duplicates are resolved
-  const allResolved = results.every(r =>
-    r.status !== 'duplicate' || r.action !== undefined
-  );
+  // Lead matches are decided per phone, so one decision covers every line of that phone.
+  const dupGroups = useMemo(() => {
+    const map = new Map<string, ImportValidationResult[]>();
+    results
+      .filter(r => r.status === 'duplicate' && r.matchType !== 'within_file')
+      .forEach(r => {
+        const key = r.row.phone;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(r);
+      });
+    return [...map.values()];
+  }, [results]);
+  const repeatedLines = results.filter(r => r.matchType === 'within_file');
 
-  // Commit the import
+  const unresolved = dupGroups.filter(g => !g[0].action).length;
+
+  const setGroupAction = (phone: string, action: Action) =>
+    setResults(prev => prev.map(r => (r.status === 'duplicate' && r.matchType !== 'within_file' && r.row.phone === phone ? { ...r, action } : r)));
+  const setLineAction = (rowIndex: number, action: Action) =>
+    setResults(prev => prev.map(r => (r.row.rowIndex === rowIndex ? { ...r, action } : r)));
+  const applyToAll = (action: Action) =>
+    setResults(prev => prev.map(r => (r.status === 'duplicate' && r.matchType !== 'within_file' ? { ...r, action } : r)));
+
+  const toCommit = results.filter(r => r.status !== 'error' && r.action !== 'skip').length;
+
   const handleCommit = async () => {
-    setStep('committing');
-    setError('');
-
+    setCommitting(true);
     try {
-      // Filter: skip errors that user hasn't resolved, include new + resolved duplicates
-      const resolvedRows = results.filter(r => {
-        if (r.status === 'error') return false; // errors can't be committed
-        if (r.status === 'new') return true;
-        if (r.status === 'duplicate') return r.action !== undefined;
-        return false;
-      }).map(r => ({
-        ...r,
-        action: r.action || (r.status === 'new' ? 'create_new' : undefined),
-      }));
-
       const res = await fetch('/api/import/commit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, resolvedRows }),
+        body: JSON.stringify({
+          filename,
+          resolvedRows: results.map(r => ({ row: r.row, action: r.status === 'new' ? 'create_new' : r.action })),
+        }),
       });
-
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const errData = await res.json();
-        setError(errData.error || 'Commit failed');
-        setStep('review');
+        toast.error(data.error || 'Import failed');
         return;
       }
-
-      const data = await res.json();
-      setCommitSummary({ ...data.summary, importLogId: data.importLogId });
-      setStep('summary');
+      setCommit(data);
+      setStep('done');
+      if (data.logError) toast.warning('Import finished, but the log could not be saved', { description: data.logError });
+      try {
+        const ch = new BroadcastChannel('dashboard-refresh');
+        ch.postMessage('refresh');
+        ch.close();
+      } catch {
+        // ignore
+      }
     } catch {
-      setError('Failed to commit import');
-      setStep('review');
+      toast.error('Network error during import — check Records before retrying (re-running is safe)');
+    } finally {
+      setCommitting(false);
     }
   };
 
+  const reset = () => {
+    setStep('upload');
+    setResults([]);
+    setCommit(null);
+    setFilename('');
+    setUploadError('');
+  };
+
   return (
-    <div className="w-full max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Import Leads &amp; Challans</h1>
-          <p className="text-sm text-slate-500 mt-1">Upload an Excel file to bulk-create leads and challans</p>
-        </div>
-        <a
-          href="/api/import/template"
-          className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-all"
-        >
-          <span className="material-symbols-outlined text-[18px]">download</span>
-          Download Template
-        </a>
-      </div>
+    <div className="flex flex-col gap-5">
+      <Stepper step={step} />
 
-      {error && (
-        <div className="mb-6 px-4 py-3 bg-red-50 text-red-700 border border-red-200 rounded-xl text-sm">
-          {error}
-          <button onClick={() => setError('')} className="ml-2 font-bold">×</button>
-        </div>
-      )}
-
-      {/* Step: Upload */}
       {step === 'upload' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
-          <div
-            className="border-2 border-dashed border-slate-300 rounded-2xl p-12 text-center hover:border-blue-400 hover:bg-blue-50/30 transition-all cursor-pointer"
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-blue-400', 'bg-blue-50/30'); }}
-            onDragLeave={e => { e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50/30'); }}
-            onDrop={e => {
-              e.preventDefault();
-              e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50/30');
-              const file = e.dataTransfer.files[0];
-              if (file && fileInputRef.current) {
-                const dt = new DataTransfer();
-                dt.items.add(file);
-                fileInputRef.current.files = dt.files;
-                fileInputRef.current.dispatchEvent(new Event('change', { bubbles: true }));
-              }
-            }}
-          >
-            {loading ? (
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-10 h-10 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-                <p className="text-sm text-slate-600">Parsing and validating...</p>
-              </div>
-            ) : (
-              <>
-                <span className="material-symbols-outlined text-[48px] text-slate-300 mb-3">upload_file</span>
-                <h3 className="text-lg font-semibold text-slate-700 mb-1">Drop your Excel file here</h3>
-                <p className="text-sm text-slate-500">or click to browse. Supports .xlsx and .csv</p>
-              </>
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
+          <label
+            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); }}
+            className={cn(
+              'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-14 text-center cursor-pointer transition-colors',
+              dragging ? 'border-accent bg-accent-soft/50' : 'border-line-strong bg-surface hover:bg-sunken/50'
             )}
+          >
             <input
-              ref={fileInputRef}
+              ref={fileRef}
               type="file"
               accept=".xlsx,.xls,.csv"
-              onChange={handleFileUpload}
-              className="hidden"
+              className="sr-only"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+              disabled={parsing}
             />
-          </div>
-
-          <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-            <div className="flex items-start gap-2">
-              <span className="material-symbols-outlined text-amber-500 text-[18px] mt-0.5">info</span>
-              <div className="text-sm text-amber-800">
-                <p className="font-semibold mb-1">Before uploading:</p>
-                <ul className="list-disc ml-4 space-y-0.5 text-amber-700">
-                  <li>Use the template above for correct column headers</li>
-                  <li>One row per book line (multiple books per visit = multiple rows with same phone + date)</li>
-                  <li>Phone numbers must be 10-digit Indian mobile numbers</li>
-                  <li>Rep names must match existing representatives</li>
-                </ul>
-              </div>
+            <Upload className="size-6 text-ink-3" />
+            <div>
+              <div className="text-[14px] font-medium text-ink">{parsing ? `Checking ${filename}…` : 'Drop the Excel file here, or click to choose'}</div>
+              <div className="mt-1 text-[12.5px] text-ink-3">.xlsx, .xls or .csv · up to 5000 rows</div>
             </div>
-          </div>
-        </div>
-      )}
+            {parsing && <div className="h-1 w-40 overflow-hidden rounded-full bg-sunken"><div className="h-full w-1/3 bg-accent animate-[progress_1s_ease-in-out_infinite]" /></div>}
+            {uploadError && <p className="max-w-md rounded-md bg-bad-soft px-3 py-2 text-[13px] text-bad">{uploadError}</p>}
+          </label>
 
-      {/* Step: Review */}
-      {step === 'review' && summary && (
-        <div className="space-y-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-green-50 border border-green-200 rounded-2xl p-5">
-              <div className="flex items-center gap-2 text-green-700">
-                <span className="material-symbols-outlined text-[20px]">check_circle</span>
-                <span className="text-sm font-semibold">New Leads</span>
-              </div>
-              <p className="text-3xl font-bold text-green-800 mt-2">{summary.newCount}</p>
-              <p className="text-xs text-green-600 mt-1">Will be created</p>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
-              <div className="flex items-center gap-2 text-amber-700">
-                <span className="material-symbols-outlined text-[20px]">warning</span>
-                <span className="text-sm font-semibold">Possible Duplicates</span>
-              </div>
-              <p className="text-3xl font-bold text-amber-800 mt-2">{summary.duplicateCount}</p>
-              <p className="text-xs text-amber-600 mt-1">Needs your review</p>
-            </div>
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-5">
-              <div className="flex items-center gap-2 text-red-700">
-                <span className="material-symbols-outlined text-[20px]">error</span>
-                <span className="text-sm font-semibold">Errors</span>
-              </div>
-              <p className="text-3xl font-bold text-red-800 mt-2">{summary.errorCount}</p>
-              <p className="text-xs text-red-600 mt-1">Cannot be imported</p>
-            </div>
-          </div>
-
-          {/* Duplicates requiring resolution */}
-          {summary.duplicateCount > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-200 bg-amber-50/50">
-                <h3 className="font-semibold text-slate-900 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-amber-500 text-[20px]">warning</span>
-                  Resolve Duplicates ({results.filter(r => r.status === 'duplicate').length})
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">Review each match and choose an action</p>
-              </div>
-
-              <div className="divide-y divide-slate-100">
-                {results.filter(r => r.status === 'duplicate').map(result => (
-                  <DuplicateRow
-                    key={result.row.rowIndex}
-                    result={result}
-                    onAction={(action) => updateRowAction(result.row.rowIndex, action)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Error rows */}
-          {summary.errorCount > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-200 bg-red-50/50">
-                <h3 className="font-semibold text-slate-900 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-red-500 text-[20px]">error</span>
-                  Errors ({summary.errorCount})
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">These rows will be skipped</p>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="text-left px-4 py-2.5 font-semibold text-slate-600">Row</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-slate-600">Lead Name</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-slate-600">Phone</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-slate-600">Errors</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.filter(r => r.status === 'error').map(result => (
-                      <tr key={result.row.rowIndex} className="border-b border-slate-100">
-                        <td className="px-4 py-2.5 text-slate-500">#{result.row.rowIndex}</td>
-                        <td className="px-4 py-2.5">{result.row.leadName || '—'}</td>
-                        <td className="px-4 py-2.5">{result.row.phone || '—'}</td>
-                        <td className="px-4 py-2.5">
-                          <ul className="list-disc ml-3 text-red-600 text-xs space-y-0.5">
-                            {result.errors.map((err, i) => <li key={i}>{err}</li>)}
-                          </ul>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* New rows (collapsed by default) */}
-          {summary.newCount > 0 && (
-            <details className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <summary className="px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors">
-                <span className="font-semibold text-slate-900 inline-flex items-center gap-2">
-                  <span className="material-symbols-outlined text-green-500 text-[20px]">check_circle</span>
-                  New Leads ({summary.newCount}) — Click to expand
-                </span>
-              </summary>
-              <div className="overflow-x-auto border-t border-slate-200">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="text-left px-4 py-2.5 font-semibold text-slate-600">Row</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-slate-600">Lead Name</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-slate-600">Phone</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-slate-600">Institute</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-slate-600">District</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-slate-600">Book</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.filter(r => r.status === 'new').map(result => (
-                      <tr key={result.row.rowIndex} className="border-b border-slate-100">
-                        <td className="px-4 py-2.5 text-slate-500">#{result.row.rowIndex}</td>
-                        <td className="px-4 py-2.5 font-medium">{result.row.leadName}</td>
-                        <td className="px-4 py-2.5">{result.row.phone}</td>
-                        <td className="px-4 py-2.5">{result.row.instituteName}</td>
-                        <td className="px-4 py-2.5">{result.row.district || result.row.pincode}</td>
-                        <td className="px-4 py-2.5">{result.row.bookTitle}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          )}
-
-          {/* Actions */}
-          <div className="flex justify-between items-center bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-            <button
-              onClick={() => { setStep('upload'); setResults([]); setSummary(null); setError(''); }}
-              className="px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-            >
-              ← Upload Different File
-            </button>
-            <button
-              onClick={handleCommit}
-              disabled={!allResolved || summary.newCount + results.filter(r => r.status === 'duplicate' && r.action !== 'skip').length === 0}
-              className="flex items-center gap-2 px-6 py-2.5 bg-[#1E40AF] text-white rounded-xl text-sm font-semibold hover:bg-[#1E3A8A] transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-blue-200"
-            >
-              <span className="material-symbols-outlined text-[18px]">publish</span>
-              {allResolved ? 'Commit Import' : 'Resolve all duplicates first'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step: Committing */}
-      {step === 'committing' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center">
-          <div className="w-12 h-12 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
-          <h3 className="text-lg font-semibold text-slate-700 mt-4">Importing data...</h3>
-          <p className="text-sm text-slate-500 mt-1">Please don&apos;t close this page</p>
-        </div>
-      )}
-
-      {/* Step: Summary */}
-      {step === 'summary' && commitSummary && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
-          <div className="text-center mb-8">
-            <span className="material-symbols-outlined text-[48px] text-green-500 mb-2">task_alt</span>
-            <h2 className="text-xl font-bold text-slate-900">Import Complete</h2>
-            <p className="text-sm text-slate-500 mt-1">{filename}</p>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-            <div className="text-center p-4 rounded-xl bg-green-50">
-              <p className="text-2xl font-bold text-green-700">{commitSummary.rowsCreated}</p>
-              <p className="text-xs text-green-600 mt-1">Created</p>
-            </div>
-            <div className="text-center p-4 rounded-xl bg-blue-50">
-              <p className="text-2xl font-bold text-blue-700">{commitSummary.rowsMerged}</p>
-              <p className="text-xs text-blue-600 mt-1">Merged</p>
-            </div>
-            <div className="text-center p-4 rounded-xl bg-slate-50">
-              <p className="text-2xl font-bold text-slate-700">{commitSummary.rowsSkipped}</p>
-              <p className="text-xs text-slate-600 mt-1">Skipped</p>
-            </div>
-            <div className="text-center p-4 rounded-xl bg-red-50">
-              <p className="text-2xl font-bold text-red-700">{commitSummary.rowsErrored}</p>
-              <p className="text-xs text-red-600 mt-1">Errors</p>
-            </div>
-          </div>
-
-          <div className="flex justify-center gap-4">
-            {commitSummary.importLogId && (
-              <a
-                href={`/api/export?type=import-log&id=${commitSummary.importLogId}`}
-                className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-all"
-              >
-                <span className="material-symbols-outlined text-[18px]">download</span>
-                Download Log
+          <Panel>
+            <PanelHeader title="Before you upload" />
+            <ol className="list-decimal pl-9 pr-4 py-3 space-y-1.5 text-[13px] text-ink-2">
+              <li>One row per book. Rows with the same phone and visit date become one challan.</li>
+              <li>Dates as DD/MM/YYYY. Phone as 10 digits.</li>
+              <li>Rep names must match the Representatives list exactly.</li>
+              <li>Re-uploading the same file is safe — already imported visits are skipped.</li>
+            </ol>
+            <div className="px-4 pb-4">
+              <a href="/api/import/template" className={buttonClass('secondary', 'md', 'w-full')}>
+                <FileSpreadsheet className="size-4" />
+                Download template
               </a>
-            )}
-            <button
-              onClick={() => { setStep('upload'); setResults([]); setSummary(null); setCommitSummary(null); }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[#1E40AF] text-white rounded-xl text-sm font-semibold hover:bg-[#1E3A8A] transition-all shadow-md shadow-blue-200"
-            >
-              <span className="material-symbols-outlined text-[18px]">upload_file</span>
-              Import Another File
-            </button>
-          </div>
+            </div>
+          </Panel>
+          <style>{`@keyframes progress{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}`}</style>
         </div>
+      )}
+
+      {step === 'review' && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-[13px] text-ink-2">
+              <span className="font-medium text-ink">{filename}</span> · {results.length} rows checked
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={reset} icon={<RotateCcw className="size-3.5" />}>Choose another file</Button>
+              <Button variant="primary" onClick={handleCommit} loading={committing} disabled={unresolved > 0 || toCommit === 0}>
+                {unresolved > 0 ? `Resolve ${unresolved} duplicate${unresolved > 1 ? 's' : ''} first` : `Import ${toCommit} row${toCommit === 1 ? '' : 's'}`}
+                {!committing && unresolved === 0 && <ArrowRight className="size-4" />}
+              </Button>
+            </div>
+          </div>
+
+          <Panel>
+            <div role="tablist" className="flex gap-1 border-b border-line px-2">
+              {([
+                ['duplicates', 'Possible duplicates', counts.duplicates],
+                ['errors', 'Errors', counts.errors],
+                ['new', 'New leads', counts.new],
+              ] as const).map(([id, label, n]) => (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={bucket === id}
+                  onClick={() => setBucket(id)}
+                  className={cn(
+                    'relative h-11 px-3 text-[13px] font-medium transition-colors',
+                    bucket === id ? 'text-ink after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:bg-accent' : 'text-ink-2 hover:text-ink'
+                  )}
+                >
+                  {label}
+                  <span className={cn('ml-1.5 font-mono text-[12px]', id === 'errors' && n ? 'text-bad' : id === 'duplicates' && n ? 'text-warn' : 'text-ink-3')}>{n}</span>
+                </button>
+              ))}
+            </div>
+
+            {bucket === 'duplicates' && (
+              counts.duplicates === 0 ? (
+                <EmptyState title="No duplicates" description="None of these phone numbers or names match an existing lead." />
+              ) : (
+                <div>
+                  {dupGroups.length > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-sunken/50 border-b border-line text-[12.5px] text-ink-2">
+                      <span>{dupGroups.length} contact{dupGroups.length > 1 ? 's' : ''} match existing leads · {unresolved} need a decision</span>
+                      <div className="flex items-center gap-2">
+                        <span>Apply to all:</span>
+                        <div className="w-44">
+                          <Select defaultValue="" onChange={e => { if (e.target.value) applyToAll(e.target.value as Action); e.target.value = ''; }} className="h-7.5 text-[12.5px]">
+                            <option value="">Choose…</option>
+                            <option value="attach_to_lead">Attach to existing</option>
+                            <option value="create_new">Create as new</option>
+                            <option value="skip">Skip</option>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <ul className="divide-y divide-line">
+                    {dupGroups.map(group => <DuplicateGroup key={group[0].row.phone} group={group} onAction={a => setGroupAction(group[0].row.phone, a)} />)}
+                  </ul>
+                  {repeatedLines.length > 0 && (
+                    <div className="border-t border-line">
+                      <div className="px-4 pt-3 pb-1 text-[12.5px] font-medium text-ink-2">Repeated lines (same phone, date and book) — skipped unless you keep them</div>
+                      <table className="data-table">
+                        <thead><tr><th>Row</th><th>Contact</th><th>Phone</th><th>Visit</th><th>Book</th><th className="w-40">Action</th></tr></thead>
+                        <tbody>
+                          {repeatedLines.map(r => (
+                            <tr key={r.row.rowIndex}>
+                              <td className="num">{r.row.rowIndex}</td>
+                              <td>{r.row.leadName}</td>
+                              <td className="font-mono text-[12.5px]">{r.row.phone}</td>
+                              <td>{formatDate(r.row.visitDate)}</td>
+                              <td>{r.row.bookTitle}</td>
+                              <td>
+                                <Select value={r.action || 'skip'} onChange={e => setLineAction(r.row.rowIndex, e.target.value as Action)} className="h-7.5 text-[12.5px]">
+                                  <option value="skip">Skip</option>
+                                  <option value="create_new">Keep line</option>
+                                </Select>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )
+            )}
+
+            {bucket === 'errors' && (
+              counts.errors === 0 ? (
+                <EmptyState title="No errors" description="Every row has the required fields." />
+              ) : (
+                <>
+                  <p className="px-4 py-2.5 text-[12.5px] text-ink-2 bg-sunken/50 border-b border-line">
+                    These rows will not be imported. Fix them in Excel and upload again — rows already imported are skipped automatically.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="data-table">
+                      <thead><tr><th>Row</th><th>Contact</th><th>Phone</th><th>Problem</th></tr></thead>
+                      <tbody>
+                        {results.filter(r => r.status === 'error').map(r => (
+                          <tr key={r.row.rowIndex}>
+                            <td className="num align-top">{r.row.rowIndex}</td>
+                            <td className="align-top">{r.row.leadName || <span className="text-ink-3">—</span>}</td>
+                            <td className="align-top font-mono text-[12.5px]">{r.row.phone || '—'}</td>
+                            <td>
+                              <ul className="space-y-0.5 text-bad">
+                                {r.errors.map(e => <li key={e}>{e}</li>)}
+                              </ul>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )
+            )}
+
+            {bucket === 'new' && (
+              counts.new === 0 ? (
+                <EmptyState title="No new leads" description="Every valid row matched an existing lead." />
+              ) : (
+                <div className="overflow-x-auto max-h-[60vh]">
+                  <table className="data-table">
+                    <thead><tr><th>Row</th><th>Contact</th><th>Phone</th><th>Institute</th><th>District</th><th>Visit</th><th>Book</th><th className="num">Qty</th><th>Rep</th></tr></thead>
+                    <tbody>
+                      {results.filter(r => r.status === 'new').map(r => (
+                        <tr key={r.row.rowIndex}>
+                          <td className="num">{r.row.rowIndex}</td>
+                          <td>{r.row.leadName}</td>
+                          <td className="font-mono text-[12.5px]">{r.row.phone}</td>
+                          <td className="max-w-56 truncate">{r.row.instituteName}</td>
+                          <td>{r.row.district || <span className="text-ink-3">{r.row.pincode}</span>}</td>
+                          <td className="whitespace-nowrap">{formatDate(r.row.visitDate)}</td>
+                          <td className="max-w-56 truncate">{r.row.bookTitle}</td>
+                          <td className="num">{r.row.quantity}</td>
+                          <td>{r.row.repName}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )}
+          </Panel>
+        </>
+      )}
+
+      {step === 'done' && commit && (
+        <>
+          <StatStrip cols={4}>
+            <Stat label="New leads created" value={commit.summary.rowsCreated} sub="rows" />
+            <Stat label="Attached to existing" value={commit.summary.rowsMerged} sub="rows" />
+            <Stat label="Skipped" value={commit.summary.rowsSkipped} sub="rows" />
+            <Stat label="Errors" value={commit.summary.rowsErrored} sub="rows" />
+          </StatStrip>
+
+          <div className="flex flex-wrap gap-2">
+            {commit.importLogId && (
+              <Button
+                onClick={() => downloadFromApi(`/api/export?type=import-log&id=${commit.importLogId}`, `import_log_${commit.importLogId}.xlsx`)}
+                icon={<Download className="size-4" />}
+              >
+                Download import log
+              </Button>
+            )}
+            <Button variant="primary" onClick={reset} icon={<Upload className="size-4" />}>Import another file</Button>
+          </div>
+
+          {commit.details.some(d => d.status !== 'created' && d.status !== 'merged') && (
+            <Panel>
+              <PanelHeader title="Rows not imported" meta={filename} />
+              <div className="overflow-x-auto max-h-[50vh]">
+                <table className="data-table">
+                  <thead><tr><th>Row</th><th>Result</th><th>Reason</th></tr></thead>
+                  <tbody>
+                    {commit.details.filter(d => d.status !== 'created' && d.status !== 'merged').map(d => (
+                      <tr key={`${d.rowIndex}-${d.status}`}>
+                        <td className="num">{d.rowIndex}</td>
+                        <td><Badge tone={d.status === 'error' ? 'bad' : 'neutral'}>{d.status === 'error' ? 'Error' : 'Skipped'}</Badge></td>
+                        <td className="text-ink-2">{d.message}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-// ─── Duplicate Row Component ──────────────────────────────────
-function DuplicateRow({ result, onAction }: {
-  result: ImportValidationResult;
-  onAction: (action: 'create_new' | 'attach_to_lead' | 'skip') => void;
-}) {
-  const { row, matchType, existingLead, action } = result;
+function Stepper({ step }: { step: Step }) {
+  const steps: Array<[Step, string]> = [['upload', 'Upload'], ['review', 'Review'], ['done', 'Done']];
+  const current = steps.findIndex(([s]) => s === step);
+  return (
+    <ol className="flex items-center gap-2 text-[13px]">
+      {steps.map(([s, label], i) => (
+        <li key={s} className="flex items-center gap-2">
+          <span
+            className={cn(
+              'grid place-items-center size-6 rounded-full font-mono text-[12px] border',
+              i < current ? 'bg-ink text-white border-ink' : i === current ? 'border-accent text-accent bg-accent-soft' : 'border-line-strong text-ink-3'
+            )}
+          >
+            {i + 1}
+          </span>
+          <span className={cn(i === current ? 'font-medium text-ink' : 'text-ink-3')}>{label}</span>
+          {i < steps.length - 1 && <span className="mx-1 h-px w-8 bg-line-strong" aria-hidden />}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function DuplicateGroup({ group, onAction }: { group: ImportValidationResult[]; onAction: (a: Action) => void }) {
+  const first = group[0];
+  const lead = first.existingLead;
+  const match = MATCH_LABEL[first.matchType || ''] || MATCH_LABEL.phone_exact;
+  const visits = [...new Set(group.map(r => r.row.visitDate))];
 
   return (
-    <div className={`p-5 ${action ? 'bg-slate-50/50' : 'bg-white'} transition-colors`}>
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-xs font-semibold text-slate-400">Row #{row.rowIndex}</span>
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-          matchType === 'phone_exact'
-            ? 'bg-amber-100 text-amber-700'
-            : matchType === 'within_file'
-            ? 'bg-purple-100 text-purple-700'
-            : 'bg-yellow-100 text-yellow-700'
-        }`}>
-          {matchType === 'phone_exact' ? '📱 Exact Phone Match'
-            : matchType === 'within_file' ? '📄 Duplicate in File'
-            : '🔍 Fuzzy Name Match'}
-        </span>
-        {action && (
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-            action === 'attach_to_lead' ? 'bg-blue-100 text-blue-700'
-              : action === 'create_new' ? 'bg-green-100 text-green-700'
-              : 'bg-slate-100 text-slate-600'
-          }`}>
-            ✓ {action === 'attach_to_lead' ? 'Will merge' : action === 'create_new' ? 'Create new' : 'Skip'}
-          </span>
-        )}
-      </div>
-
-      {/* Side-by-side comparison */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Imported row */}
-        <div className="p-4 bg-blue-50/50 border border-blue-200 rounded-xl">
-          <p className="text-xs font-semibold text-blue-600 mb-2">📥 FROM IMPORT</p>
-          <div className="space-y-1 text-sm">
-            <p><span className="text-slate-500">Name:</span> <span className="font-medium">{row.leadName}</span></p>
-            <p><span className="text-slate-500">Phone:</span> <span className="font-medium">{row.phone}</span></p>
-            <p><span className="text-slate-500">Institute:</span> {row.instituteName}</p>
-            <p><span className="text-slate-500">District:</span> {row.district || row.pincode}</p>
-            <p><span className="text-slate-500">Visit Date:</span> {row.visitDate}</p>
-            <p><span className="text-slate-500">Book:</span> {row.bookTitle}</p>
-          </div>
+    <li className="px-4 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <Badge tone={match.tone} dot>{match.label}</Badge>
+          <span className="text-[12.5px] text-ink-3">Row{group.length > 1 ? 's' : ''} {group.map(r => r.row.rowIndex).join(', ')}</span>
         </div>
-
-        {/* Existing lead */}
-        {existingLead && (
-          <div className="p-4 bg-amber-50/50 border border-amber-200 rounded-xl">
-            <p className="text-xs font-semibold text-amber-600 mb-2">📋 EXISTING LEAD ({existingLead.lead_seq_id})</p>
-            <div className="space-y-1 text-sm">
-              <p><span className="text-slate-500">Name:</span> <span className="font-medium">{existingLead.contactName}</span></p>
-              <p><span className="text-slate-500">Phone:</span> <span className="font-medium">{existingLead.phone}</span></p>
-              <p><span className="text-slate-500">Institute:</span> {existingLead.instituteName}</p>
-              <p><span className="text-slate-500">District:</span> {existingLead.district}</p>
-              <p><span className="text-slate-500">Last Visit:</span> {existingLead.lastVisitDate || 'N/A'}</p>
-              <p><span className="text-slate-500">Last Books:</span> {existingLead.lastChallanBooks?.join(', ') || 'N/A'}</p>
-              <p><span className="text-slate-500">Status:</span> {existingLead.status}</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex flex-wrap gap-2 mt-3">
-        {existingLead && (
-          <button
-            onClick={() => onAction('attach_to_lead')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              action === 'attach_to_lead'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
-            }`}
+        <div className="w-56">
+          <Select
+            value={first.action || ''}
+            onChange={e => onAction(e.target.value as Action)}
+            aria-label="Action for this contact"
+            aria-invalid={!first.action}
+            className="h-8"
           >
-            Attach as new challan to existing lead
-          </button>
-        )}
-        <button
-          onClick={() => onAction('create_new')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-            action === 'create_new'
-              ? 'bg-green-600 text-white shadow-sm'
-              : 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
-          }`}
-        >
-          Create as new lead
-        </button>
-        <button
-          onClick={() => onAction('skip')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-            action === 'skip'
-              ? 'bg-slate-600 text-white shadow-sm'
-              : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
-          }`}
-        >
-          Skip row
-        </button>
+            {!first.action && <option value="">Choose what to do…</option>}
+            <option value="attach_to_lead">Attach as new visit to {lead?.lead_seq_id}</option>
+            <option value="create_new">Create as a new lead</option>
+            <option value="skip">Skip {group.length > 1 ? 'these rows' : 'this row'}</option>
+          </Select>
+        </div>
       </div>
+
+      <div className="grid gap-px overflow-hidden rounded-md border border-line bg-line md:grid-cols-2">
+        <Compare
+          heading="In this file"
+          rows={[
+            ['Contact', first.row.leadName],
+            ['Phone', <span key="p" className="font-mono">{first.row.phone}</span>],
+            ['Institute', first.row.instituteName],
+            ['District', first.row.district || `PIN ${first.row.pincode}`],
+            ['Visit', visits.map(v => formatDate(v)).join(', ')],
+            ['Books', group.map(r => `${r.row.bookTitle}${r.row.quantity > 1 ? ` ×${r.row.quantity}` : ''}`).join(', ')],
+          ]}
+        />
+        <Compare
+          heading={<>Existing lead <span className="font-mono font-normal text-ink-2">{lead?.lead_seq_id}</span></>}
+          rows={[
+            ['Contact', lead?.contactName || '—'],
+            ['Phone', <span key="p" className="font-mono">{lead?.phone || '—'}</span>],
+            ['Institute', lead?.instituteName || '—'],
+            ['District', lead?.district || '—'],
+            ['Last visit', lead?.lastVisitDate ? formatDate(lead.lastVisitDate) : '—'],
+            ['Last books', lead?.lastChallanBooks?.length ? lead.lastChallanBooks.join(', ') : '—'],
+          ]}
+        />
+      </div>
+    </li>
+  );
+}
+
+function Compare({ heading, rows }: { heading: React.ReactNode; rows: Array<[string, React.ReactNode]> }) {
+  return (
+    <div className="bg-surface">
+      <div className="px-3 py-2 text-[12px] font-semibold text-ink-2 bg-sunken/60 border-b border-line">{heading}</div>
+      <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1 px-3 py-2.5 text-[13px]">
+        {rows.map(([k, v]) => (
+          <div key={k} className="contents">
+            <dt className="text-ink-3">{k}</dt>
+            <dd className="text-ink min-w-0 break-words">{v}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

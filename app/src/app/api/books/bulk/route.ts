@@ -1,11 +1,16 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { getRequestSession } from '@/lib/session';
 
 // POST /api/books/bulk — bulk-insert book titles { titles: string[] }
 // Dedupes against existing titles and within the payload.
 export async function POST(request: Request) {
+  const session = await getRequestSession(request);
+  if (!session || !['admin', 'books'].includes(session.role)) {
+    return NextResponse.json({ error: 'Only the catalogue team can add books' }, { status: 403 });
+  }
   const supabase = await createClient();
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
 
   const rawTitles: unknown[] = Array.isArray(body.titles) ? body.titles : [];
 

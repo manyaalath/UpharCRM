@@ -2,13 +2,18 @@ import { NextResponse } from 'next/server';
 import { parseExcelRow, validateImportRows } from '@/lib/importValidator';
 import type { ImportRow } from '@/lib/types';
 
-// POST /api/import — Validate uploaded rows
+export const maxDuration = 120;
+
+// POST /api/import — Validate uploaded rows (nothing is written)
 export async function POST(request: Request) {
-  const body = await request.json();
-  const { rows: rawRows } = body;
+  const body = await request.json().catch(() => null);
+  const rawRows = body?.rows;
 
   if (!rawRows || !Array.isArray(rawRows) || rawRows.length === 0) {
     return NextResponse.json({ error: 'No rows provided' }, { status: 400 });
+  }
+  if (rawRows.length > 5000) {
+    return NextResponse.json({ error: 'Import at most 5000 rows at a time — split the file' }, { status: 413 });
   }
 
   // Parse raw Excel rows to ImportRow format

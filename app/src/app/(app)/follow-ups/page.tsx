@@ -1,10 +1,16 @@
+import { Suspense } from 'react';
+import type { Metadata } from 'next';
 import FollowUpsClient from './FollowUpsClient';
 
-export const metadata = {
-  title: 'Follow-Ups - Uphar CRM',
-  description: 'Manage and track follow-ups for specimen distribution leads',
+export const metadata: Metadata = {
+  title: 'Follow-ups · Uphar CRM',
+  description: 'Call queue and follow-up schedule for specimen leads',
 };
 
 export default function FollowUpsPage() {
-  return <FollowUpsClient />;
+  return (
+    <Suspense>
+      <FollowUpsClient />
+    </Suspense>
+  );
 }

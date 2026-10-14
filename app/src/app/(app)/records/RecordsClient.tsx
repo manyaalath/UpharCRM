@@ -1,233 +1,260 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Challan } from '@/lib/types';
+import { useEffect, useState, useTransition } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { ChevronLeft, ChevronRight, Download, FileText, Plus, Search, X } from 'lucide-react';
+import {
+  Button, EmptyState, Input, LeadStatusBadge, LinkButton, Page, PageHeader, Panel, Select, cn,
+} from '@/components/ui';
 import { ALL_DISTRICTS } from '@/lib/constants';
+import { formatDate } from '@/lib/date';
+import { downloadFromApi } from '@/lib/download';
 
-interface BookOption {
-  id: string;
-  title: string;
+export interface RecordFilters {
+  q: string;
+  challan: string;
+  district: string;
+  rep: string;
+  book: string;
+  from: string;
+  to: string;
 }
 
-export default function RecordsClient({ initialData, totalCount, agents }: { initialData: Challan[], totalCount: number, agents?: string[] }) {
-  const [challans, setChallans] = useState<Challan[]>(initialData);
-  const [bookOptions, setBookOptions] = useState<BookOption[]>([]);
-  
-  // Filters
-  const [search, setSearch] = useState('');
-  const [district, setDistrict] = useState('');
-  const [agentName, setAgentName] = useState('');
-  const [dateStart, setDateStart] = useState('');
-  const [dateEnd, setDateEnd] = useState('');
-  const [book, setBook] = useState('');
-  
-  // Pagination
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(totalCount);
-  const limit = 20;
+export interface RecordRow {
+  id: string;
+  challan_no: string;
+  challan_date: string;
+  lead_id: string;
+  lead_seq_id: string | null;
+  status: string | null;
+  contact: string | null;
+  mobile: string | null;
+  institute: string | null;
+  town: string | null;
+  district: string | null;
+  rep: string | null;
+  books: { title: string; quantity: number }[];
+}
 
-  // Fetch book options for filter dropdown
-  useEffect(() => {
-    fetch('/api/specimen-books')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.data) setBookOptions(data.data); })
-      .catch(() => {});
-  }, []);
+interface Props {
+  rows: RecordRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  filters: RecordFilters;
+  agents: { id: string; name: string }[];
+  books: { id: string; title: string }[];
+  canCreate: boolean;
+  canExport: boolean;
+  error: string | null;
+}
 
-  const fetchChallans = useCallback(async () => {
+export default function RecordsClient({ rows, total, page, pageSize, filters, agents, books, canCreate, canExport, error }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [pending, startTransition] = useTransition();
+  const [q, setQ] = useState(filters.q);
+
+  // Push a new set of filters into the URL; the server re-renders the table.
+  const apply = ({ page: p = 1, ...next }: Partial<RecordFilters> & { page?: number }) => {
+    const merged: RecordFilters = { ...filters, ...next };
     const params = new URLSearchParams();
-    if (search) params.append('search', search);
-    if (district) params.append('district', district);
-    if (agentName) params.append('agent_name', agentName);
-    if (dateStart) params.append('date_start', dateStart);
-    if (dateEnd) params.append('date_end', dateEnd);
-    if (book) params.append('book', book);
-    
-    params.append('page', page.toString());
-    params.append('limit', limit.toString());
-
-    try {
-      const res = await fetch(`/api/challans?${params.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      
-      setChallans(data.data || []);
-      setTotal(data.pagination?.total || 0);
-    } catch (err) {
-      console.error('Failed to fetch challans:', err);
-    }
-  }, [search, district, agentName, dateStart, dateEnd, book, page]);
-
-  useEffect(() => {
-    fetchChallans();
-  }, [fetchChallans]);
-
-  const handleExport = async () => {
-    // Build export URL with current filters
-    const params = new URLSearchParams();
-    params.append('type', 'leads');
-    if (district) params.append('district', district);
-    if (agentName) params.append('agent_name', agentName);
-    if (dateStart) params.append('date_start', dateStart);
-    if (dateEnd) params.append('date_end', dateEnd);
-
-    try {
-      const res = await fetch(`/api/export?${params.toString()}`);
-      if (!res.ok) {
-        const err = await res.json();
-        alert(err.error || 'Export failed');
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `challans_export_${new Date().toISOString().split('T')[0]}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch {
-      alert('Export failed');
-    }
+    (Object.keys(merged) as (keyof RecordFilters)[]).forEach(k => {
+      if (merged[k]) params.set(k, merged[k]);
+    });
+    if (p > 1) params.set('page', String(p));
+    const qs = params.toString();
+    startTransition(() => router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false }));
   };
 
-  const canExport = true;
+  // Debounced challan-number search.
+  useEffect(() => {
+    if (q === filters.q) return;
+    const t = setTimeout(() => apply({ q, challan: '' }), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+
+  const agentName = agents.find(a => a.id === filters.rep)?.name;
+  const bookTitle = books.find(b => b.id === filters.book)?.title;
+
+  const chips: { key: keyof RecordFilters | 'dates'; label: string }[] = [];
+  if (filters.challan) chips.push({ key: 'challan', label: `Challan ${filters.challan}` });
+  if (filters.district) chips.push({ key: 'district', label: filters.district });
+  if (filters.rep) chips.push({ key: 'rep', label: `Rep: ${agentName || 'Unknown'}` });
+  if (filters.book) chips.push({ key: 'book', label: `Book: ${bookTitle || 'Unknown'}` });
+  if (filters.from || filters.to) {
+    chips.push({ key: 'dates', label: `${filters.from ? formatDate(filters.from) : 'Start'} – ${filters.to ? formatDate(filters.to) : 'Today'}` });
+  }
+
+  const removeChip = (key: keyof RecordFilters | 'dates') =>
+    key === 'dates' ? apply({ from: '', to: '' }) : apply({ [key]: '' } as Partial<RecordFilters>);
+
+  const handleExport = () => {
+    const params = new URLSearchParams({ type: 'leads' });
+    if (filters.district) params.set('district', filters.district);
+    if (filters.rep) { params.set('agent_id', filters.rep); if (agentName) params.set('rep_label', agentName); }
+    if (filters.book) { params.set('book', filters.book); if (bookTitle) params.set('book_label', bookTitle); }
+    if (filters.from) params.set('from', filters.from);
+    if (filters.to) params.set('to', filters.to);
+    downloadFromApi(`/api/export?${params}`, 'uphar_challans.xlsx');
+  };
+
+  const first = total ? (page - 1) * pageSize + 1 : 0;
+  const last = Math.min(page * pageSize, total);
+  const pages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <div className="p-6 flex-grow flex flex-col">
-      {/* Page Header & Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 pb-1 border-b-2 border-[#1E40AF]">
-        <h2 className="text-[24px] font-bold text-slate-900 tracking-tight">All Challan Records</h2>
-        <div className="flex space-x-2 mt-2 md:mt-0">
-          <a href="/data-entry" className="px-4 py-2 bg-[#1E40AF] text-white text-[12px] font-semibold rounded hover:bg-blue-800 transition-colors flex items-center shadow-sm">
-            <span className="material-symbols-outlined text-[18px] mr-1">add</span> New Challan
-          </a>
-          {canExport && (
-            <button onClick={handleExport} className="px-4 py-2 border border-[#1E40AF] text-[#1E40AF] text-[12px] font-semibold rounded hover:bg-blue-50 transition-colors flex items-center bg-white">
-              <span className="material-symbols-outlined text-[18px] mr-1">download</span> Export
-            </button>
-          )}
-        </div>
-      </div>
+    <Page wide>
+      <PageHeader
+        title="Challans"
+        description={`${total.toLocaleString('en-IN')} specimen challan${total === 1 ? '' : 's'}${chips.length ? ' match these filters' : ' on record'}`}
+        actions={
+          <>
+            {canExport && (
+              <Button onClick={handleExport} icon={<Download className="size-4" />} disabled={!total}>Export</Button>
+            )}
+            {canCreate && (
+              <LinkButton href="/de" variant="primary" icon={<Plus className="size-4" />}>New challan</LinkButton>
+            )}
+          </>
+        }
+      />
 
-      {/* Filter Bar */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 mb-6 flex flex-col md:flex-row gap-4 shadow-sm">
-        <div className="flex-grow relative">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">search</span>
-          <input 
-            type="text" 
-            placeholder="Search Challan #, Name, Institute..." 
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded text-sm focus:border-[#1E40AF] focus:ring-2 focus:ring-[#DBEAFE] outline-none"
+      {/* Filters — one row on desktop */}
+      <div className="grid grid-cols-2 md:grid-cols-[minmax(180px,1.2fr)_repeat(3,minmax(140px,1fr))_auto] gap-2 mb-3">
+        <div className="col-span-2 md:col-span-1">
+          <Input
+            leading={<Search />}
+            placeholder="Challan no."
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            aria-label="Search by challan number"
           />
         </div>
-        <div className="flex flex-col md:flex-row gap-2">
-          <select 
-            value={book}
-            onChange={e => { setBook(e.target.value); setPage(1); }}
-            className="border border-slate-200 rounded py-2 px-3 focus:border-[#1E40AF] focus:ring-2 focus:ring-[#DBEAFE] text-sm bg-white outline-none min-w-[180px]"
+        <Select value={filters.district} onChange={e => apply({ district: e.target.value })} aria-label="District">
+          <option value="">All districts</option>
+          {ALL_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
+        </Select>
+        <Select value={filters.rep} onChange={e => apply({ rep: e.target.value })} aria-label="Representative">
+          <option value="">All reps</option>
+          {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </Select>
+        <Select value={filters.book} onChange={e => apply({ book: e.target.value })} aria-label="Book" className="col-span-2 md:col-span-1">
+          <option value="">All books</option>
+          {books.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+        </Select>
+        <div className="col-span-2 md:col-span-1 flex items-center gap-1.5">
+          <Input type="date" value={filters.from} max={filters.to || undefined} onChange={e => apply({ from: e.target.value })} aria-label="From date" className="md:w-[140px]" />
+          <span className="text-ink-3 text-[12px]">to</span>
+          <Input type="date" value={filters.to} min={filters.from || undefined} onChange={e => apply({ to: e.target.value })} aria-label="To date" className="md:w-[140px]" />
+        </div>
+      </div>
+
+      {chips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          {chips.map(c => (
+            <button
+              key={c.key}
+              onClick={() => removeChip(c.key)}
+              className="inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-sm bg-surface border border-line-strong text-[12px] text-ink-2 hover:text-ink hover:border-ink-3"
+            >
+              {c.label}
+              <X className="size-3" aria-label="Remove filter" />
+            </button>
+          ))}
+          <button
+            onClick={() => { setQ(''); apply({ q: '', challan: '', district: '', rep: '', book: '', from: '', to: '' }); }}
+            className="text-[12px] text-accent hover:underline underline-offset-2 ml-1"
           >
-            <option value="">Book: All</option>
-            {bookOptions.map(b => (
-              <option key={b.id} value={b.title}>{b.title}</option>
-            ))}
-          </select>
-          <div className="flex gap-1 border border-slate-200 rounded px-1 items-center bg-white w-min">
-             <input type="date" value={dateStart} onChange={e => { setDateStart(e.target.value); setPage(1); }} className="p-1 text-sm bg-transparent outline-none max-w-[120px]" title="Start Date" />
-             <span className="text-slate-400">-</span>
-             <input type="date" value={dateEnd} onChange={e => { setDateEnd(e.target.value); setPage(1); }} className="p-1 text-sm bg-transparent outline-none max-w-[120px]" title="End Date" />
-          </div>
-          <select value={district} onChange={e => { setDistrict(e.target.value); setPage(1); }} className="border border-slate-200 rounded py-2 px-3 focus:border-[#1E40AF] focus:ring-2 focus:ring-[#DBEAFE] text-sm bg-white outline-none">
-            <option value="">District: All</option>
-            {ALL_DISTRICTS.map(d => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-          {agents && (
-            <select value={agentName} onChange={e => { setAgentName(e.target.value); setPage(1); }} className="border border-slate-200 rounded py-2 px-3 focus:border-[#1E40AF] focus:ring-2 focus:ring-[#DBEAFE] text-sm bg-white outline-none">
-              <option value="">Rep: All</option>
-              {agents.map(a => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-          )}
+            Clear all
+          </button>
         </div>
-      </div>
+      )}
 
-      {/* Data Table */}
-      <div className="bg-white border border-slate-200 rounded-lg flex-grow flex flex-col overflow-hidden shadow-sm">
-        <div className="overflow-x-auto flex-grow">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 border-b-2 border-[#1E40AF] sticky top-0 z-10">
-              <tr>
-                <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap">Challan #</th>
-                <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap">Date</th>
-                <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap">Name</th>
-                <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap">Institute</th>
-                <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap">Village/Town</th>
-                <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap">District</th>
-                <th className="py-2 px-4 text-[12px] font-semibold text-slate-600 whitespace-nowrap text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {challans.map((challan: any, idx) => {
-                const instContact = Array.isArray(challan.leads?.institute_contacts) 
-                  ? challan.leads?.institute_contacts[0] 
-                  : challan.leads?.institute_contacts;
-                
-                const teacher_name = instContact?.contacts?.name || 'Unknown';
-                const institute_name = instContact?.institutes?.name || 'Unknown';
-                const village_town = instContact?.institutes?.village_town;
-                const district = instContact?.institutes?.locations?.district || 'Unknown';
-
-                return (
-                  <tr key={challan.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'} hover:bg-slate-100 transition-colors h-[40px]`}>
-                    <td className="py-1 px-4 text-[12px] font-mono font-medium text-[#1E40AF]">{challan.challan_no}</td>
-                    <td className="py-1 px-4 text-[14px] text-slate-900">{challan.challan_date}</td>
-                    <td className="py-1 px-4 text-[14px] text-slate-900">{teacher_name}</td>
-                    <td className="py-1 px-4 text-[14px] text-slate-900">{institute_name}</td>
-                    <td className="py-1 px-4 text-[14px] text-slate-500">{village_town || '-'}</td>
-                    <td className="py-1 px-4 text-[14px] text-slate-900">{district}</td>
-                    <td className="py-1 px-4 text-right">
-                      <button className="text-[#1E40AF] hover:text-blue-800">
-                        <span className="material-symbols-outlined text-[18px]">visibility</span>
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {challans.length === 0 && (
+      <Panel className={cn('overflow-hidden transition-opacity', pending && 'opacity-60')}>
+        {error ? (
+          <EmptyState title="Couldn't load challans" description={error} />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={<FileText />}
+            title={chips.length || filters.q ? 'No challans match these filters' : 'No challans yet'}
+            description={chips.length || filters.q ? 'Try removing a filter.' : 'Challans keyed in from the entry desk appear here.'}
+            action={canCreate && !chips.length ? <LinkButton href="/de" variant="primary">Enter a challan</LinkButton> : undefined}
+          />
+        ) : (
+          <div className="overflow-x-auto max-h-[calc(100dvh-280px)]">
+            <table className="data-table min-w-[900px]">
+              <thead>
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-500 text-sm">No records found.</td>
+                  <th>Challan</th>
+                  <th>Date</th>
+                  <th>Contact</th>
+                  <th>District</th>
+                  <th>Rep</th>
+                  <th>Books</th>
+                  <th>Lead status</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="bg-slate-50 border-t border-slate-200 p-2 flex items-center justify-between">
-          <span className="text-[12px] text-slate-500">Showing {challans.length > 0 ? (page - 1) * limit + 1 : 0} to {Math.min(page * limit, total)} of {total} entries</span>
-          <div className="flex space-x-1">
-            <button 
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-1 text-slate-500 hover:text-[#1E40AF] disabled:opacity-50"
-            >
-              <span className="material-symbols-outlined text-[20px]">chevron_left</span>
-            </button>
-            <button 
-              onClick={() => setPage(p => p + 1)}
-              disabled={page * limit >= total}
-              className="p-1 text-slate-500 hover:text-[#1E40AF] disabled:opacity-50"
-            >
-              <span className="material-symbols-outlined text-[20px]">chevron_right</span>
-            </button>
+              </thead>
+              <tbody>
+                {rows.map(r => {
+                  const copies = r.books.reduce((s, b) => s + b.quantity, 0);
+                  const highlighted = !!filters.challan && r.challan_no === filters.challan;
+                  return (
+                    <tr
+                      key={r.id}
+                      className={cn('is-clickable', highlighted && '[&>td]:bg-accent-soft')}
+                      onClick={() => router.push(`/leads/${r.lead_id}`)}
+                      tabIndex={0}
+                      onKeyDown={e => { if (e.key === 'Enter') router.push(`/leads/${r.lead_id}`); }}
+                    >
+                      <td className="font-mono text-[12.5px] text-ink whitespace-nowrap">{r.challan_no}</td>
+                      <td className="whitespace-nowrap text-ink-2">{formatDate(r.challan_date)}</td>
+                      <td className="max-w-[280px]">
+                        <div className="font-medium text-ink truncate">{r.contact || '—'}</div>
+                        <div className="text-[12px] text-ink-3 truncate">
+                          {[r.institute, r.town].filter(Boolean).join(' · ') || '—'}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap">{r.district || '—'}</td>
+                      <td className="whitespace-nowrap text-ink-2">{r.rep || '—'}</td>
+                      <td className="max-w-[240px]" title={r.books.map(b => `${b.quantity} × ${b.title}`).join('\n')}>
+                        {r.books.length ? (
+                          <div className="flex items-baseline gap-1.5 min-w-0">
+                            <span className="font-mono text-[12px] text-ink-2 shrink-0">{copies}</span>
+                            <span className="truncate text-ink">{r.books[0].title}</span>
+                            {r.books.length > 1 && <span className="shrink-0 text-[12px] text-ink-3">+{r.books.length - 1}</span>}
+                          </div>
+                        ) : (
+                          <span className="text-ink-3">—</span>
+                        )}
+                      </td>
+                      <td><LeadStatusBadge status={r.status} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
-      </div>
-    </div>
+        )}
+
+        {total > 0 && (
+          <div className="flex items-center justify-between gap-3 px-4 h-11 border-t border-line text-[12.5px] text-ink-2">
+            <span className="tabular">
+              {first.toLocaleString('en-IN')}–{last.toLocaleString('en-IN')} of {total.toLocaleString('en-IN')}
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="mr-2 text-ink-3 tabular">Page {page} of {pages}</span>
+              <Button size="icon" variant="ghost" aria-label="Previous page" disabled={page <= 1 || pending} onClick={() => apply({ page: page - 1 })}>
+                <ChevronLeft className="size-4" />
+              </Button>
+              <Button size="icon" variant="ghost" aria-label="Next page" disabled={page >= pages || pending} onClick={() => apply({ page: page + 1 })}>
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </Panel>
+    </Page>
   );
 }

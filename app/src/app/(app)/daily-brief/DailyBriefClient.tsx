@@ -1,169 +1,248 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { CircleAlert, RefreshCw } from 'lucide-react';
+import {
+  Badge, Button, EmptyState, LinkButton, Page, PageHeader, Panel, PanelHeader, Skeleton, Stat, StatStrip, type Tone,
+} from '@/components/ui';
+import { formatDate, formatDateTime, todayIST } from '@/lib/date';
 
 interface RepWorkload {
   name: string;
-  status: 'Overloaded' | 'Optimal' | 'Underutilized';
+  status: 'Overloaded' | 'Optimal' | 'Underutilized' | string;
   note: string;
 }
 
-interface DailyBriefData {
+interface BriefData {
   manager_briefing: string;
   today_priorities: string[];
   reps_workload: RepWorkload[];
   stale_leads_warning: string;
 }
 
-export default function DailyBriefClient() {
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<DailyBriefData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+interface BriefFacts {
+  due_today: number;
+  overdue: number;
+  next_7_days: number;
+  stale_leads: number;
+  reps: { name: string; open_follow_ups: number; overdue_follow_ups: number }[];
+}
 
-  const generateBrief = async () => {
+interface StoredBrief {
+  date: string;
+  data: BriefData;
+  facts: BriefFacts;
+  generated_at: string;
+}
+
+interface Counts {
+  overdue: number;
+  due_today: number;
+  upcoming: number;
+  completed_today: number;
+}
+
+const STORAGE_KEY = 'uphar.dailyBrief';
+
+const WORKLOAD_TONE: Record<string, Tone> = {
+  Overloaded: 'bad',
+  Optimal: 'ok',
+  Underutilized: 'warn',
+};
+
+function readStored(): StoredBrief | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredBrief;
+    return parsed.date === todayIST() ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(brief: StoredBrief) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(brief)); } catch { /* storage unavailable */ }
+}
+
+export default function DailyBriefClient() {
+  const [brief, setBrief] = useState<StoredBrief | null>(null);
+  const [counts, setCounts] = useState<Counts | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<{ message: string; notConfigured?: boolean } | null>(null);
+
+  useEffect(() => {
+    setBrief(readStored());
+    fetch('/api/follow-ups?counts=1')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => j && setCounts(j.counts))
+      .catch(() => {});
+  }, []);
+
+  const generate = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/ai/daily-brief', { method: 'POST' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to fetch AI daily brief');
-      setData(json.data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError({ message: json.error || 'Could not generate the brief', notConfigured: json.code === 'ai_not_configured' });
+        return;
+      }
+      const stored: StoredBrief = { date: todayIST(), data: json.data, facts: json.facts, generated_at: json.generated_at };
+      setBrief(stored);
+      writeStored(stored);
+    } catch {
+      setError({ message: 'Could not reach the server. Check your connection.' });
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const getStatusBadge = (status: string) => {
-    switch(status) {
-      case 'Overloaded': return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-200">Overloaded</span>;
-      case 'Underutilized': return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700 border border-amber-200">Underutilized</span>;
-      case 'Optimal': return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">Optimal</span>;
-      default: return null;
-    }
-  };
+  const data = brief?.data;
+  const facts = brief?.facts;
+  const repFacts = new Map((facts?.reps || []).map(r => [r.name, r]));
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-64px)] overflow-hidden">
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50 w-full">
-        <div className="max-w-4xl mx-auto w-full pb-20">
-          <header className="mb-8 flex items-center justify-between">
-            <div>
-              <h1 className="text-[28px] md:text-[32px] font-bold text-slate-900 tracking-tight flex items-center gap-3">
-                <span className="material-symbols-outlined text-[#1E40AF] text-[36px]">lightbulb</span>
-                AI Daily Brief
-              </h1>
-              <hr className="border-0 h-[2px] bg-[#1E40AF] w-full max-w-[100px] mt-1" />
-              <p className="text-slate-500 mt-2 text-[14px]">Your AI Sales Manager&apos;s morning briefing</p>
-            </div>
-            
-            <button
-              onClick={generateBrief}
-              disabled={loading}
-              className="bg-[#1E40AF] hover:bg-blue-800 text-white px-5 py-2.5 rounded-lg shadow-sm font-semibold transition-all flex items-center gap-2 disabled:opacity-50"
-            >
-              <span className={`material-symbols-outlined ${loading ? 'animate-spin' : ''}`}>
-                {loading ? 'sync' : 'auto_awesome'}
-              </span>
-              {loading ? 'Analyzing...' : (data ? 'Refresh Brief' : 'Generate Brief')}
-            </button>
-          </header>
+    <Page className="max-w-[1080px]">
+      <PageHeader
+        title="Daily brief"
+        description={
+          <>
+            {formatDate(todayIST())}
+            {brief && <span className="text-ink-3"> · generated {formatDateTime(brief.generated_at)}</span>}
+          </>
+        }
+        actions={
+          <Button
+            variant={brief ? 'secondary' : 'primary'}
+            onClick={generate}
+            loading={loading}
+            icon={brief ? <RefreshCw className="size-3.5" /> : undefined}
+          >
+            {loading ? 'Reading today’s data…' : brief ? 'Regenerate' : 'Generate brief'}
+          </Button>
+        }
+      />
 
-          {error && (
-            <div className="bg-red-50 text-red-600 p-4 rounded-lg border border-red-200 mb-6 flex items-center gap-3">
-              <span className="material-symbols-outlined">error</span>
-              <p className="text-[14px] font-medium">{error}</p>
-            </div>
-          )}
+      {/* Real numbers — always shown, independent of the AI text. */}
+      <StatStrip cols={4} className="mb-5">
+        <Stat label="Overdue calls" value={counts ? counts.overdue : '—'} href="/follow-ups" />
+        <Stat label="Due today" value={counts ? counts.due_today : '—'} href="/follow-ups?mode=call" />
+        <Stat label="Upcoming" value={counts ? counts.upcoming : '—'} sub={facts ? `${facts.next_7_days} in the next 7 days` : undefined} />
+        <Stat label="Stale leads (30+ days)" value={facts ? facts.stale_leads : '—'} sub={facts ? undefined : 'After generating'} href="/leads" />
+      </StatStrip>
 
-          {!data && !loading && !error && (
-            <div className="bg-white border border-slate-200 rounded-xl p-10 text-center shadow-sm">
-              <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-indigo-100">
-                <span className="material-symbols-outlined text-indigo-500 text-[40px]">coffee</span>
-              </div>
-              <h2 className="text-[20px] font-bold text-slate-900 mb-2">Ready for today&apos;s briefing?</h2>
-              <p className="text-[14px] text-slate-500 max-w-md mx-auto mb-6">
-                Click &quot;Generate Brief&quot; to have the AI analyze today&apos;s workloads, overdue follow-ups, and stale leads to provide actionable priorities.
+      {error && (
+        <Panel className="mb-5">
+          <div className="flex items-start gap-3 px-4 py-3.5">
+            <CircleAlert className="size-4 mt-0.5 text-bad shrink-0" />
+            <div className="text-[13.5px]">
+              <p className="font-medium text-ink">{error.notConfigured ? 'AI is not configured' : 'The brief could not be generated'}</p>
+              <p className="mt-0.5 text-ink-2">
+                {error.notConfigured
+                  ? 'Add GROQ_API_KEY to the environment (local .env and Vercel project settings), then try again. The numbers above are still live.'
+                  : error.message}
               </p>
-              <button
-                onClick={generateBrief}
-                className="bg-[#1E40AF] hover:bg-blue-800 text-white px-6 py-3 rounded-lg shadow-md font-semibold transition-all"
-              >
-                Start Analysis
-              </button>
             </div>
-          )}
+          </div>
+        </Panel>
+      )}
 
-          {data && !loading && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              {/* Manager Briefing */}
-              <div className="bg-white border-l-4 border-[#1E40AF] shadow-md rounded-r-xl p-6">
-                <h3 className="text-[12px] uppercase tracking-widest text-[#1E40AF] font-bold mb-3">Morning Briefing</h3>
-                <p className="text-[16px] text-slate-800 leading-relaxed font-medium">
-                  &quot;{data.manager_briefing}&quot;
-                </p>
-              </div>
+      {loading && !data && (
+        <Panel className="p-5 space-y-3">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-11/12" />
+          <Skeleton className="h-4 w-4/5" />
+        </Panel>
+      )}
 
-              {/* Priorities & Leads */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-                  <h3 className="text-[15px] font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <span className="material-symbols-outlined text-rose-500">priority_high</span>
-                    Today&apos;s Top Priorities
-                  </h3>
-                  <ul className="space-y-3">
-                    {data.today_priorities?.map((p, i) => (
-                      <li key={i} className="flex gap-3 text-[14px] text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                        <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-bold text-[12px] shrink-0">
-                          {i + 1}
-                        </span>
-                        <span className="pt-0.5">{p}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+      {!data && !loading && !error && (
+        <Panel>
+          <EmptyState
+            title="No brief yet today"
+            description="The brief reads today’s follow-ups, overdue calls, rep workloads and leads that have gone quiet, then suggests where to start."
+            action={<Button variant="primary" onClick={generate}>Generate brief</Button>}
+          />
+        </Panel>
+      )}
 
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-                  <h3 className="text-[15px] font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <span className="material-symbols-outlined text-amber-500">warning</span>
-                    Stale Leads Warning
-                  </h3>
-                  <div className="bg-amber-50 border border-amber-100 rounded-lg p-4 text-[14px] text-amber-900 font-medium">
-                    {data.stale_leads_warning}
-                  </div>
-                  <div className="mt-4 text-center">
-                    <Link href="/leads?status=inactive" className="text-[13px] font-bold text-[#1E40AF] hover:underline">
-                      View Inactive Leads →
-                    </Link>
-                  </div>
-                </div>
-              </div>
+      {data && (
+        <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+          <Panel className="mb-5">
+            <PanelHeader title="Morning briefing" meta="AI summary of today’s data" />
+            <p className="px-5 py-4 text-[15px] leading-relaxed text-ink max-w-[72ch]">{data.manager_briefing}</p>
+          </Panel>
 
-              {/* Rep Workload */}
-              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-                <h3 className="text-[15px] font-bold text-slate-900 mb-4 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-emerald-500">groups</span>
-                  Team Workload Analysis
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {data.reps_workload?.map((rep, i) => (
-                    <div key={i} className="border border-slate-200 rounded-lg p-4 hover:border-slate-300 transition-colors">
-                      <div className="flex items-start justify-between mb-2">
-                        <h4 className="font-bold text-[14px] text-slate-900">{rep.name}</h4>
-                        {getStatusBadge(rep.status)}
-                      </div>
-                      <p className="text-[12px] text-slate-500 line-clamp-3" title={rep.note}>{rep.note}</p>
-                    </div>
+          <div className="grid gap-5 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] mb-5">
+            <Panel>
+              <PanelHeader title="Priorities for today" />
+              {data.today_priorities?.length ? (
+                <ol className="divide-y divide-line">
+                  {data.today_priorities.map((p, i) => (
+                    <li key={i} className="grid grid-cols-[28px_1fr] gap-2 px-4 py-3 text-[13.5px] text-ink">
+                      <span className="font-mono text-ink-3">{String(i + 1).padStart(2, '0')}</span>
+                      <span>{p}</span>
+                    </li>
                   ))}
-                </div>
-              </div>
+                </ol>
+              ) : (
+                <p className="px-4 py-3 text-[13px] text-ink-3">No priorities returned.</p>
+              )}
+            </Panel>
 
-            </div>
-          )}
+            <Panel>
+              <PanelHeader
+                title="Leads going quiet"
+                meta={facts ? `${facts.stale_leads} not updated in 30+ days` : undefined}
+                actions={<LinkButton href="/leads" size="sm" variant="ghost">Open leads</LinkButton>}
+              />
+              <p className="px-4 py-3 text-[13.5px] text-ink-2 leading-relaxed">{data.stale_leads_warning || '—'}</p>
+            </Panel>
+          </div>
+
+          <Panel>
+            <PanelHeader title="Rep workload" meta="Counts are live; status and notes are AI suggestions" />
+            {data.reps_workload?.length ? (
+              <div className="overflow-x-auto">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Representative</th>
+                      <th className="text-right">Open</th>
+                      <th className="text-right">Overdue</th>
+                      <th>Load</th>
+                      <th>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.reps_workload.map(rep => {
+                      const f = repFacts.get(rep.name);
+                      return (
+                        <tr key={rep.name}>
+                          <td className="font-medium text-ink whitespace-nowrap">{rep.name}</td>
+                          <td className="num">{f ? f.open_follow_ups : '—'}</td>
+                          <td className={`num ${f && f.overdue_follow_ups > 0 ? 'text-bad' : ''}`}>{f ? f.overdue_follow_ups : '—'}</td>
+                          <td><Badge tone={WORKLOAD_TONE[rep.status] || 'neutral'}>{rep.status}</Badge></td>
+                          <td className="text-ink-2 min-w-[240px]">{rep.note}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="px-4 py-3 text-[13px] text-ink-3">No active representatives.</p>
+            )}
+          </Panel>
+
+          <p className="mt-4 text-[12px] text-ink-3">
+            AI text can be wrong. Check the numbers on <Link href="/follow-ups" className="underline underline-offset-2 hover:text-ink">Follow-ups</Link> before acting.
+          </p>
         </div>
-      </div>
-    </div>
+      )}
+    </Page>
   );
 }

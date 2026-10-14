@@ -7,6 +7,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { sendTemplateMessage, normalizeWaNumber } from './meta';
 import { classifyReply, type ReplyClass } from './classify';
+import { todayIST, addDaysIST } from '@/lib/date';
 
 const TEMPLATE = process.env.WHATSAPP_TEMPLATE_NAME || 'lead_confirmation';
 const LANG = process.env.WHATSAPP_TEMPLATE_LANG || 'en';
@@ -17,12 +18,13 @@ const REMINDER_HOURS = parseInt(process.env.WHATSAPP_REMINDER_HOURS || '48', 10)
 // See WHATSAPP_INTEGRATION.md for the full re-enable checklist.
 const WHATSAPP_ENABLED = process.env.WHATSAPP_ENABLED === 'true';
 
-const today = () => new Date().toISOString().split('T')[0];
-const datePlus = (days: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
-};
+export function isWhatsAppEnabled(): boolean {
+  return WHATSAPP_ENABLED;
+}
+
+// Follow-up dates are calendar days in India time.
+const today = () => todayIST();
+const datePlus = (days: number) => addDaysIST(days);
 
 // ── Step 2: send the confirmation template to a lead (idempotent) ──────────────
 export async function triggerLeadWhatsApp(leadId: string) {

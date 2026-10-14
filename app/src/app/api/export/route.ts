@@ -1,285 +1,233 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import * as XLSX from 'xlsx';
+import { createClient } from '@/lib/supabase/server';
+import { getRequestSession } from '@/lib/session';
+import { formatDateTime, isoDateIST } from '@/lib/date';
+import { computeAnalytics, fetchAll, filtersFromParams, one } from '@/app/api/dashboard/analytics';
+
+export const dynamic = 'force-dynamic';
+
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+function fileResponse(wb: XLSX.WorkBook, filename: string) {
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  return new NextResponse(buf, {
+    status: 200,
+    headers: {
+      'Content-Type': XLSX_TYPE,
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
+  });
+}
 
 // GET /api/export?type=leads|analytics|import-log&...
 export async function GET(request: Request) {
+  const session = await getRequestSession(request);
+  if (!session) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+
   const { searchParams } = new URL(request.url);
   const exportType = searchParams.get('type') || 'leads';
 
-  switch (exportType) {
-    case 'leads':
-      return exportLeads(request, searchParams);
-    case 'analytics':
-      return exportAnalytics(request, searchParams);
-    case 'import-log':
-      return exportImportLog(request, searchParams);
-    default:
-      return NextResponse.json({ error: 'Invalid export type' }, { status: 400 });
+  // Challan-entry operators may only download their import logs.
+  if (session.role === 'data_entry' && exportType !== 'import-log') {
+    return NextResponse.json({ error: 'You can only export import logs' }, { status: 403 });
+  }
+
+  try {
+    switch (exportType) {
+      case 'leads':
+        return await exportLeads(searchParams);
+      case 'analytics':
+        return await exportAnalytics(searchParams);
+      case 'import-log':
+        return await exportImportLog(searchParams);
+      default:
+        return NextResponse.json({ error: 'Invalid export type' }, { status: 400 });
+    }
+  } catch (error) {
+    console.error('Export error:', error);
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Export failed' }, { status: 500 });
   }
 }
 
-async function exportLeads(
-  request: Request,
-  searchParams: URLSearchParams
-) {
+// Resolve ?agent_id= or legacy ?agent_name= to an agent id. Returns
+// undefined when no rep filter, null when the name matches nobody.
+async function resolveAgentId(supabase: Awaited<ReturnType<typeof createClient>>, sp: URLSearchParams) {
+  const id = sp.get('agent_id');
+  if (id) return id;
+  const name = sp.get('agent_name');
+  if (!name) return undefined;
+  const { data } = await supabase.from('agents').select('id').eq('name', name).limit(1);
+  return data?.[0]?.id ?? null;
+}
+
+interface ExportChallan {
+  challan_no: string;
+  challan_date: string;
+  leads: unknown;
+  agents: unknown;
+  challan_books: Array<{ quantity: number; books: unknown }> | null;
+}
+
+async function exportLeads(sp: URLSearchParams) {
   const supabase = await createClient();
+  const filters = filtersFromParams(sp);
+  const agentId = await resolveAgentId(supabase, sp);
+  const bookId = sp.get('book');
 
-  // Build query — no pagination, get all matching rows
-  let query = supabase
-    .from('challans')
-    .select('challan_no, challan_date, leads!inner(lead_seq_id, status, lead_type, institute_contacts!inner(contacts(name, mobile_no, alt_mobile_no), institutes!inner(name, address_line, village_town, locality, locations!inner(district, pincode, state)))), agents(name), challan_books(books(title), quantity)')
-    .order('challan_date', { ascending: false });
-
-  // Additional filters
-  const requestedDistrict = searchParams.get('district');
-  if (requestedDistrict) {
-    query = query.eq('leads.institute_contacts.institutes.locations.district', requestedDistrict);
-  }
-  if (searchParams.has('agent_name')) {
-    query = query.eq('agents.name', searchParams.get('agent_name'));
-  }
-  if (searchParams.has('date_start')) {
-    query = query.gte('challan_date', searchParams.get('date_start'));
-  }
-  if (searchParams.has('date_end')) {
-    query = query.lte('challan_date', searchParams.get('date_end'));
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  // Transform to flat rows matching import template format
   const rows: Record<string, unknown>[] = [];
-  (data || []).forEach((challan: Record<string, unknown>) => {
-    const lead = challan.leads as Record<string, unknown>;
-    const ic = lead?.institute_contacts as Record<string, unknown>;
-    const contact = ic?.contacts as { name?: string; mobile_no?: string; alt_mobile_no?: string };
-    const institute = ic?.institutes as { name?: string; locations?: { district?: string; pincode?: string } };
-    const agent = challan.agents as { name?: string };
-    const challanBooks = challan.challan_books as Array<{ books: { title: string }; quantity: number }> | undefined;
 
-    if (challanBooks && challanBooks.length > 0) {
-      challanBooks.forEach(cb => {
-        rows.push({
-          'Lead Name': contact?.name || '',
-          'Lead Type': lead?.lead_type || '',
-          'Phone Number': contact?.mobile_no || '',
-          'Alternate Phone': contact?.alt_mobile_no || '',
-          'Pincode': institute?.locations?.pincode || '',
-          'District': institute?.locations?.district || '',
-          'School/Shop/Institution Name': institute?.name || '',
-          'Rep Name': agent?.name || '',
-          'Visit Date': challan.challan_date,
-          'Book Titles Given (Specimens)': cb.books?.title || '',
-          'Quantity': cb.quantity,
-          'Remarks': '',
-          'Lead ID': lead?.lead_seq_id || '',
-          'Challan No': challan.challan_no,
-          'Status': lead?.status || '',
-        });
-      });
-    } else {
-      rows.push({
+  if (agentId !== null) {
+    const district = filters.district;
+    const leadsEmbed = district
+      ? 'leads!inner(lead_seq_id, status, lead_type, institute_contacts!inner(contacts(name, mobile_no, alt_mobile_no), institutes!inner(name, locations!inner(district, pincode, state))))'
+      : 'leads(lead_seq_id, status, lead_type, institute_contacts(contacts(name, mobile_no, alt_mobile_no), institutes(name, locations(district, pincode, state))))';
+    const select = `id, challan_no, challan_date, ${leadsEmbed}, agents(name), challan_books(quantity, books(title))${bookId ? ', bookmatch:challan_books!inner(book_id)' : ''}`;
+
+    const challans = await fetchAll<ExportChallan>((a, b) => {
+      let q = supabase.from('challans').select(select).order('challan_date', { ascending: false }).order('id');
+      if (district) q = q.eq('leads.institute_contacts.institutes.locations.district', district);
+      if (agentId) q = q.eq('agent_id', agentId);
+      if (filters.from) q = q.gte('challan_date', filters.from);
+      if (filters.to) q = q.lte('challan_date', filters.to);
+      if (bookId) q = q.eq('bookmatch.book_id', bookId);
+      return q.range(a, b) as unknown as PromiseLike<{ data: ExportChallan[] | null; error: { message: string } | null }>;
+    });
+
+    for (const challan of challans) {
+      const lead = one<Record<string, unknown>>(challan.leads as Record<string, unknown>);
+      const ic = one<Record<string, unknown>>(lead?.institute_contacts as Record<string, unknown>);
+      const contact = one(ic?.contacts as { name?: string; mobile_no?: string; alt_mobile_no?: string });
+      const institute = one(ic?.institutes as { name?: string; locations?: unknown });
+      const loc = one(institute?.locations as { district?: string; pincode?: string });
+      const agent = one(challan.agents as { name?: string });
+      const base = {
         'Lead Name': contact?.name || '',
-        'Lead Type': lead?.lead_type || '',
+        'Lead Type': (lead?.lead_type as string) || '',
         'Phone Number': contact?.mobile_no || '',
         'Alternate Phone': contact?.alt_mobile_no || '',
-        'Pincode': institute?.locations?.pincode || '',
-        'District': institute?.locations?.district || '',
+        'Pincode': loc?.pincode || '',
+        'District': loc?.district || '',
         'School/Shop/Institution Name': institute?.name || '',
         'Rep Name': agent?.name || '',
         'Visit Date': challan.challan_date,
-        'Book Titles Given (Specimens)': '',
-        'Quantity': 0,
-        'Remarks': '',
-        'Lead ID': lead?.lead_seq_id || '',
-        'Challan No': challan.challan_no,
-        'Status': lead?.status || '',
-      });
-    }
-  });
-
-  // Build xlsx
-  const wb = XLSX.utils.book_new();
-
-  // Add filter info header
-  const filterInfo = buildFilterInfo(searchParams);
-  const titleRow = [['Uphar CRM — Leads/Challans Export'], [filterInfo], ['Generated: ' + new Date().toISOString()], []];
-  const ws = XLSX.utils.aoa_to_sheet(titleRow);
-  XLSX.utils.sheet_add_json(ws, rows, { origin: 'A5' });
-
-  // Set column widths
-  ws['!cols'] = [
-    { wch: 20 }, { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
-    { wch: 15 }, { wch: 30 }, { wch: 25 }, { wch: 12 }, { wch: 30 },
-    { wch: 10 }, { wch: 25 }, { wch: 12 }, { wch: 15 }, { wch: 12 },
-  ];
-
-  XLSX.utils.book_append_sheet(wb, ws, 'Leads & Challans');
-
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  return new NextResponse(buf, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="uphar_leads_export_${new Date().toISOString().split('T')[0]}.xlsx"`,
-    },
-  });
-}
-
-async function exportAnalytics(
-  request: Request,
-  searchParams: URLSearchParams
-) {
-  const supabase = await createClient();
-  const analyticsType = searchParams.get('analytics_type') || 'district';
-
-  const wb = XLSX.utils.book_new();
-  const filterInfo = buildFilterInfo(searchParams);
-  const titleRows = [['Uphar CRM — Analytics Export'], [filterInfo], ['Generated: ' + new Date().toISOString()], []];
-
-  if (analyticsType === 'district' || analyticsType === 'all') {
-    // District analytics
-    const { data: districtStats } = await supabase
-      .from('mv_district_stats')
-      .select('*');
-
-    const filteredStats = districtStats || [];
-
-    const ws = XLSX.utils.aoa_to_sheet(titleRows);
-    XLSX.utils.sheet_add_json(ws, filteredStats.map(s => ({
-      'District': s.district,
-      'Challans': s.challan_count,
-      'Leads': s.lead_count,
-      'Pending Follow-ups': s.followup_count,
-    })), { origin: 'A5' });
-    ws['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 18 }];
-    XLSX.utils.book_append_sheet(wb, ws, 'District Analytics');
-  }
-
-  if (analyticsType === 'books' || analyticsType === 'all') {
-    // Book analytics
-    const { data: bookStats } = await supabase
-      .from('mv_book_stats')
-      .select('*');
-
-    const ws2 = XLSX.utils.aoa_to_sheet(titleRows);
-    XLSX.utils.sheet_add_json(ws2, (bookStats || []).map(s => ({
-      'Book Title': s.book_name,
-      'Times Distributed': s.distribution_count,
-      'Unique Leads': s.unique_leads,
-    })), { origin: 'A5' });
-    ws2['!cols'] = [{ wch: 30 }, { wch: 18 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, ws2, 'Book Analytics');
-  }
-
-  if (analyticsType === 'representatives' || analyticsType === 'all') {
-    // Rep analytics — build from raw data
-    let repQuery = supabase
-      .from('agents')
-      .select('name, challans(id), leads(id, status), follow_ups(id, status)')
-      .eq('is_active', true);
-
-    const { data: repData } = await repQuery;
-
-    const repRows = (repData || []).map((rep: Record<string, unknown>) => {
-      const challans = (rep.challans as Array<{ id: string }>) || [];
-      const leads = (rep.leads as Array<{ id: string; status: string }>) || [];
-      const followUps = (rep.follow_ups as Array<{ id: string; status: string }>) || [];
-
-      return {
-        'Representative': rep.name,
-        'Challans': challans.length,
-        'Total Leads': leads.length,
-        'Interested Leads': leads.filter(l => l.status === 'interested').length,
-        'Completed Follow-ups': followUps.filter(f => f.status === 'completed').length,
       };
-    });
-
-    const ws3 = XLSX.utils.aoa_to_sheet(titleRows);
-    XLSX.utils.sheet_add_json(ws3, repRows, { origin: 'A5' });
-    ws3['!cols'] = [{ wch: 25 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 18 }];
-    XLSX.utils.book_append_sheet(wb, ws3, 'Representative Analytics');
-  }
-
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  return new NextResponse(buf, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="uphar_analytics_export_${new Date().toISOString().split('T')[0]}.xlsx"`,
-    },
-  });
-}
-
-async function exportImportLog(
-  request: Request,
-  searchParams: URLSearchParams
-) {
-  const logId = searchParams.get('id');
-  if (!logId) {
-    return NextResponse.json({ error: 'Import log ID is required' }, { status: 400 });
-  }
-
-  const supabase = await createClient();
-  const { data: log } = await supabase
-    .from('import_logs')
-    .select('*')
-    .eq('id', logId)
-    .single();
-
-  if (!log) {
-    return NextResponse.json({ error: 'Import log not found' }, { status: 404 });
+      const tail = {
+        'Remarks': '',
+        'Lead ID': (lead?.lead_seq_id as string) || '',
+        'Challan No': challan.challan_no,
+        'Status': (lead?.status as string) || '',
+      };
+      const lines = challan.challan_books || [];
+      if (lines.length) {
+        for (const cb of lines) {
+          rows.push({ ...base, 'Book Titles Given (Specimens)': one(cb.books as { title?: string })?.title || '', 'Quantity': cb.quantity, ...tail });
+        }
+      } else {
+        rows.push({ ...base, 'Book Titles Given (Specimens)': '', 'Quantity': 0, ...tail });
+      }
+    }
   }
 
   const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(titleRows('Leads & challans', describeFilters(sp)));
+  XLSX.utils.sheet_add_json(ws, rows, { origin: 'A5' });
+  ws['!cols'] = [
+    { wch: 22 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 9 },
+    { wch: 16 }, { wch: 32 }, { wch: 20 }, { wch: 12 }, { wch: 32 },
+    { wch: 9 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 14 },
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, 'Leads & Challans');
+  return fileResponse(wb, `uphar_leads_${isoDateIST()}.xlsx`);
+}
 
-  // Summary sheet
-  const summaryData = [
-    ['Uphar CRM — Import Log'],
+async function exportAnalytics(sp: URLSearchParams) {
+  const supabase = await createClient();
+  const a = await computeAnalytics(supabase, filtersFromParams(sp));
+  const which = sp.get('analytics_type') || 'all';
+  const info = describeFilters(sp);
+  const wb = XLSX.utils.book_new();
+
+  const sheet = (name: string, rows: Record<string, unknown>[], cols: number[]) => {
+    const ws = XLSX.utils.aoa_to_sheet(titleRows(name, info));
+    XLSX.utils.sheet_add_json(ws, rows, { origin: 'A5' });
+    ws['!cols'] = cols.map(wch => ({ wch }));
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  };
+
+  if (which === 'all' || which === 'summary') {
+    sheet('Summary', [
+      { Metric: 'Challans', Value: a.summary.challans.value, 'Previous period': a.summary.challans.prev ?? '' },
+      { Metric: 'Leads', Value: a.summary.leads.value, 'Previous period': a.summary.leads.prev ?? '' },
+      { Metric: 'Books distributed', Value: a.summary.books.value, 'Previous period': a.summary.books.prev ?? '' },
+      { Metric: 'Open follow-ups', Value: a.summary.pending_followups, 'Previous period': '' },
+      { Metric: 'Overdue follow-ups', Value: a.summary.overdue_followups, 'Previous period': '' },
+      { Metric: 'Districts covered', Value: a.summary.districts_covered, 'Previous period': '' },
+    ], [24, 12, 16]);
+  }
+  if (which === 'all' || which === 'district') {
+    sheet('Districts', a.districts.map(s => ({
+      District: s.district, Challans: s.challans, Leads: s.leads, 'Open follow-ups': s.pending_followups,
+    })), [22, 12, 12, 16]);
+  }
+  if (which === 'all' || which === 'books') {
+    sheet('Books', a.books.map(s => ({
+      'Book title': s.title, 'Copies given': s.copies, 'Unique leads': s.unique_leads, 'Repeat copies': s.repeat,
+    })), [36, 14, 14, 14]);
+  }
+  if (which === 'all' || which === 'representatives') {
+    sheet('Representatives', a.reps.map(s => ({
+      Representative: s.name, Challans: s.challans, Leads: s.leads, Interested: s.interested, 'Follow-ups done': s.followups_done,
+    })), [26, 12, 12, 12, 16]);
+  }
+
+  return fileResponse(wb, `uphar_analytics_${isoDateIST()}.xlsx`);
+}
+
+async function exportImportLog(sp: URLSearchParams) {
+  const logId = sp.get('id');
+  if (!logId) return NextResponse.json({ error: 'Import log ID is required' }, { status: 400 });
+
+  const supabase = await createClient();
+  const { data: log } = await supabase.from('import_logs').select('*').eq('id', logId).maybeSingle();
+  if (!log) return NextResponse.json({ error: 'Import log not found' }, { status: 404 });
+
+  const summary = [
+    ['Uphar CRM — Import log'],
     ['Filename', log.filename],
-    ['Date', log.created_at],
-    ['Total Rows', log.total_rows],
+    ['Imported', formatDateTime(log.created_at)],
+    ['Total rows', log.total_rows],
     ['Created', log.rows_created],
     ['Merged', log.rows_merged],
     ['Skipped', log.rows_skipped],
     ['Errors', log.rows_errored],
     [],
   ];
-
-  const ws = XLSX.utils.aoa_to_sheet(summaryData);
-
-  // Add details
+  const ws = XLSX.utils.aoa_to_sheet(summary);
   const details = (log.details as Array<{ rowIndex: number; status: string; message: string }>) || [];
-  if (details.length > 0) {
-    XLSX.utils.sheet_add_json(ws, details.map(d => ({
-      'Row #': d.rowIndex,
-      'Status': d.status,
-      'Message': d.message,
-    })), { origin: `A${summaryData.length + 1}` });
+  if (details.length) {
+    XLSX.utils.sheet_add_json(ws, details.map(d => ({ 'Row #': d.rowIndex, Status: d.status, Message: d.message })), {
+      origin: `A${summary.length + 1}`,
+    });
   }
-
-  ws['!cols'] = [{ wch: 15 }, { wch: 40 }];
+  ws['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 60 }];
+  const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Import Log');
-
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  return new NextResponse(buf, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="import_log_${logId}.xlsx"`,
-    },
-  });
+  return fileResponse(wb, `import_log_${isoDateIST(new Date(log.created_at))}_${String(logId).slice(0, 8)}.xlsx`);
 }
 
-function buildFilterInfo(searchParams: URLSearchParams): string {
+function titleRows(title: string, filterInfo: string) {
+  return [[`Uphar CRM — ${title}`], [filterInfo], [`Generated: ${formatDateTime(new Date())} IST`], []];
+}
+
+function describeFilters(sp: URLSearchParams): string {
+  const f = filtersFromParams(sp);
   const parts: string[] = [];
-  if (searchParams.get('district')) parts.push(`District: ${searchParams.get('district')}`);
-  if (searchParams.get('agent_name')) parts.push(`Rep: ${searchParams.get('agent_name')}`);
-  if (searchParams.get('date_start')) parts.push(`From: ${searchParams.get('date_start')}`);
-  if (searchParams.get('date_end')) parts.push(`To: ${searchParams.get('date_end')}`);
-  return parts.length > 0 ? `Filters: ${parts.join(' | ')}` : 'No filters applied';
+  if (f.district) parts.push(`District: ${f.district}`);
+  if (sp.get('agent_name')) parts.push(`Rep: ${sp.get('agent_name')}`);
+  if (sp.get('rep_label')) parts.push(`Rep: ${sp.get('rep_label')}`);
+  if (sp.get('book_label')) parts.push(`Book: ${sp.get('book_label')}`);
+  if (f.from) parts.push(`From: ${f.from}`);
+  if (f.to) parts.push(`To: ${f.to}`);
+  return parts.length ? `Filters: ${parts.join(' | ')}` : 'Filters: none (all records)';
 }

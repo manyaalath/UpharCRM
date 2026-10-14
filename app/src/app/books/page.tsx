@@ -1,269 +1,297 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
+import { ArrowDownUp, BookPlus, ClipboardPaste, FileSpreadsheet, Search, Trash2 } from 'lucide-react';
+import { Button, ConfirmDialog, Dialog, EmptyState, Input, Page, PageHeader, Panel, Skeleton, Textarea, cn } from '@/components/ui';
+import { formatDate } from '@/lib/date';
 
 interface Book {
   id: string;
   title: string;
   created_at?: string;
+  copies?: number;
+  challans?: number;
 }
 
-type Notice = { type: 'success' | 'error'; message: string } | null;
+type SortKey = 'title' | 'copies' | 'created_at';
 
 export default function BooksPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
-  const [title, setTitle] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState<Notice>(null);
   const [search, setSearch] = useState('');
+  const [newTitle, setNewTitle] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'title', dir: 1 });
+
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [bulkSaving, setBulkSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const showNotice = (type: 'success' | 'error', message: string) => {
-    setNotice({ type, message });
-    setTimeout(() => setNotice(null), 4000);
-  };
+  const [toDelete, setToDelete] = useState<Book | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const fetchBooks = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/books');
-      const data = await res.json();
-      if (data.data) setBooks(data.data);
-    } catch {
-      showNotice('error', 'Failed to load books');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const loadBooks = useCallback(
+    () =>
+      fetch('/api/books?with_counts=1')
+        .then(async res => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          setBooks(data.data || []);
+        })
+        .catch(() => toast.error('Could not load the catalogue'))
+        .finally(() => setLoading(false)),
+    []
+  );
+  const fetchBooks = loadBooks;
 
-  useEffect(() => { fetchBooks(); }, [fetchBooks]);
+  useEffect(() => {
+    loadBooks();
+  }, [loadBooks]);
 
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = title.trim();
-    if (!clean) return;
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const list = q ? books.filter(b => b.title.toLowerCase().includes(q)) : books;
+    return [...list].sort((a, b) => {
+      if (sort.key === 'title') return a.title.localeCompare(b.title) * sort.dir;
+      if (sort.key === 'copies') return ((a.copies || 0) - (b.copies || 0)) * sort.dir;
+      return (a.created_at || '').localeCompare(b.created_at || '') * sort.dir;
+    });
+  }, [books, search, sort]);
 
-    setSaving(true);
+  const totalCopies = useMemo(() => books.reduce((n, b) => n + (b.copies || 0), 0), [books]);
+
+  const toggleSort = (key: SortKey) =>
+    setSort(s => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === 'title' ? 1 : -1 }));
+
+  const addOne = async () => {
+    const title = newTitle.trim();
+    if (!title || adding) return;
+    setAdding(true);
     try {
       const res = await fetch('/api/books', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: clean }),
+        body: JSON.stringify({ title }),
       });
       const data = await res.json();
       if (!res.ok) {
-        showNotice('error', data.error || 'Failed to add book');
+        toast.error(data.error || 'Could not add the title');
         return;
       }
-      setTitle('');
-      showNotice('success', `"${clean}" added`);
-      fetchBooks();
+      setBooks(prev => [...prev, { ...data.data, copies: 0, challans: 0 }]);
+      setNewTitle('');
+      toast.success(`Added “${data.data.title}”`);
     } catch {
-      showNotice('error', 'Failed to add book');
+      toast.error('Could not add the title');
     } finally {
-      setSaving(false);
+      setAdding(false);
     }
   };
 
-  const handleDelete = async (book: Book) => {
-    if (!confirm(`Delete "${book.title}"?`)) return;
+  const addMany = async (titles: string[]) => {
+    const res = await fetch('/api/books/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titles }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error || 'Bulk add failed');
+      return false;
+    }
+    toast.success(`${data.created} added`, { description: data.skipped ? `${data.skipped} already in the catalogue` : undefined });
+    await fetchBooks();
+    return true;
+  };
+
+  const submitPaste = async () => {
+    const titles = pasteText.split(/\r?\n/).map(t => t.trim()).filter(Boolean);
+    if (!titles.length) return;
+    setBulkSaving(true);
     try {
-      const res = await fetch(`/api/books?id=${book.id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) {
-        showNotice('error', data.error || 'Failed to delete');
-        return;
+      if (await addMany(titles)) {
+        setPasteText('');
+        setPasteOpen(false);
       }
-      showNotice('success', `"${book.title}" deleted`);
-      fetchBooks();
-    } catch {
-      showNotice('error', 'Failed to delete');
+    } finally {
+      setBulkSaving(false);
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFile = async (file: File) => {
     setUploading(true);
-
     try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, unknown>[];
-
-      if (rows.length === 0) {
-        showNotice('error', 'The file has no data rows.');
-        return;
-      }
-
-      // Find the title column (Book Title / Title, ignoring case + spaces)
+      const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: '' });
       const norm = (s: string) => s.toLowerCase().replace(/[_\s]/g, '');
-      const headers = Object.keys(rows[0]);
-      const titleKey = headers.find(h => norm(h) === 'booktitle' || norm(h) === 'title' || norm(h) === 'bookname' || norm(h) === 'name');
-
-      if (!titleKey) {
-        showNotice('error', 'No "Book Title" column found. Use a column named Book Title.');
+      const key = Object.keys(rows[0] || {}).find(h => ['booktitle', 'title', 'bookname', 'name'].includes(norm(h)));
+      if (!key) {
+        toast.error('No “Book Title” column found', { description: 'Name the column Book Title and try again.' });
         return;
       }
-
-      const titles = rows.map(r => String(r[titleKey] ?? '').trim()).filter(Boolean);
-      if (titles.length === 0) {
-        showNotice('error', 'No book titles found in the file.');
+      const titles = rows.map(r => String(r[key] ?? '').trim()).filter(Boolean);
+      if (!titles.length) {
+        toast.error('No titles found in the file');
         return;
       }
-
-      const res = await fetch('/api/books/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ titles }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showNotice('error', data.error || 'Bulk upload failed');
-        return;
-      }
-
-      showNotice('success', `Imported: ${data.created} added, ${data.skipped} already existed.`);
-      fetchBooks();
+      await addMany(titles);
     } catch (err) {
-      showNotice('error', err instanceof Error ? err.message : 'Failed to read file');
+      toast.error(err instanceof Error ? `Could not read the file: ${err.message}` : 'Could not read the file');
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
-  const filtered = books.filter(b => b.title.toLowerCase().includes(search.toLowerCase().trim()));
+  const confirmDelete = async () => {
+    if (!toDelete) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/books?id=${toDelete.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Could not delete');
+        return;
+      }
+      setBooks(prev => prev.filter(b => b.id !== toDelete.id));
+      toast.success(`Deleted “${toDelete.title}”`);
+      setToDelete(null);
+    } catch {
+      toast.error('Could not delete');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const pasteCount = pasteText.split(/\r?\n/).filter(t => t.trim()).length;
 
   return (
-    <div className="flex-grow flex flex-col items-center pb-16 pt-6 px-4 w-full">
-      <div className="w-full max-w-[720px] flex flex-col gap-6">
-        <div>
-          <h1 className="text-[28px] font-bold text-slate-900 leading-tight">Book Entry</h1>
-          <hr className="h-[3px] bg-indigo-500 border-none mt-2 w-full rounded-full" />
+    <Page>
+      <PageHeader
+        title="Book catalogue"
+        description={loading ? 'Loading…' : `${books.length} titles · ${totalCopies.toLocaleString('en-IN')} specimen copies distributed`}
+        actions={
+          <>
+            <Button onClick={() => setPasteOpen(true)} icon={<ClipboardPaste className="size-4" />}>Paste a list</Button>
+            <Button onClick={() => fileRef.current?.click()} loading={uploading} icon={<FileSpreadsheet className="size-4" />}>Upload Excel</Button>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+          </>
+        }
+      />
+
+      <Panel>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center px-3 py-3 border-b border-line">
+          <form onSubmit={e => { e.preventDefault(); addOne(); }} className="flex flex-1 gap-2">
+            <div className="flex-1">
+              <Input
+                value={newTitle}
+                onChange={e => setNewTitle(e.target.value)}
+                placeholder="Add a title and press Enter"
+                leading={<BookPlus />}
+                aria-label="New book title"
+              />
+            </div>
+            <Button type="submit" variant="primary" loading={adding} disabled={!newTitle.trim()}>Add</Button>
+          </form>
+          <div className="sm:w-64">
+            <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search titles" leading={<Search />} aria-label="Search titles" />
+          </div>
         </div>
 
-        {notice && (
-          <div className={`p-3 rounded-lg border text-sm flex items-center gap-2 ${
-            notice.type === 'success'
-              ? 'bg-green-50 border-green-200 text-green-700'
-              : 'bg-red-50 border-red-200 text-red-700'
-          }`}>
-            <span className="material-symbols-outlined text-[18px]">
-              {notice.type === 'success' ? 'check_circle' : 'error'}
-            </span>
-            {notice.message}
+        {loading ? (
+          <div className="p-4 space-y-2.5">
+            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-6" />)}
+          </div>
+        ) : visible.length === 0 ? (
+          <EmptyState
+            title={search ? `No titles match “${search}”` : 'The catalogue is empty'}
+            description={search ? undefined : 'Add titles one by one above, paste a list, or upload an Excel sheet with a Book Title column.'}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <SortTh label="Title" active={sort.key === 'title'} onClick={() => toggleSort('title')} />
+                  <SortTh label="Copies given" active={sort.key === 'copies'} onClick={() => toggleSort('copies')} className="text-right" />
+                  <th className="text-right">Challans</th>
+                  <SortTh label="Added" active={sort.key === 'created_at'} onClick={() => toggleSort('created_at')} />
+                  <th className="w-12"><span className="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map(b => {
+                  const used = (b.challans || 0) > 0;
+                  return (
+                    <tr key={b.id} className="group">
+                      <td className="text-ink">{b.title}</td>
+                      <td className="num">{(b.copies || 0).toLocaleString('en-IN')}</td>
+                      <td className="num text-ink-2">{b.challans || 0}</td>
+                      <td className="text-ink-2 whitespace-nowrap">{formatDate(b.created_at)}</td>
+                      <td className="text-right">
+                        <Button
+                          variant="quiet-danger"
+                          size="icon"
+                          onClick={() => setToDelete(b)}
+                          disabled={used}
+                          title={used ? 'Already distributed — cannot be deleted' : 'Delete title'}
+                          aria-label={`Delete ${b.title}`}
+                          className="opacity-60 group-hover:opacity-100"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
+      </Panel>
 
-        {/* Add + bulk upload */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Manual add */}
-          <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
-            <h2 className="text-[14px] font-semibold text-slate-800 mb-3 flex items-center gap-2">
-              <span className="material-symbols-outlined text-[18px] text-indigo-500">add_circle</span>
-              Add a book
-            </h2>
-            <form onSubmit={handleAdd} className="flex flex-col gap-3">
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Book title"
-                className="bg-white border border-slate-300 rounded px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <button
-                type="submit"
-                disabled={saving || !title.trim()}
-                className="px-4 py-2 bg-indigo-600 text-white rounded text-[13px] font-bold hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
-              >
-                {saving ? 'Adding...' : 'Add Book'}
-              </button>
-            </form>
-          </div>
+      <Dialog
+        open={pasteOpen}
+        onClose={() => setPasteOpen(false)}
+        title="Paste a list of titles"
+        description="One title per line. Titles already in the catalogue are skipped."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPasteOpen(false)}>Cancel</Button>
+            <Button variant="primary" onClick={submitPaste} loading={bulkSaving} disabled={!pasteCount}>
+              Add {pasteCount || ''} title{pasteCount === 1 ? '' : 's'}
+            </Button>
+          </>
+        }
+      >
+        <Textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={10} placeholder={'Hindi Vyakaran Class 8\nGanit Class 10'} className="font-mono text-[12.5px]" />
+      </Dialog>
 
-          {/* Bulk upload */}
-          <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
-            <h2 className="text-[14px] font-semibold text-slate-800 mb-3 flex items-center gap-2">
-              <span className="material-symbols-outlined text-[18px] text-indigo-500">upload_file</span>
-              Bulk upload (Excel)
-            </h2>
-            <div
-              onClick={() => !uploading && fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-300 rounded-lg p-5 text-center hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer"
-            >
-              {uploading ? (
-                <div className="flex flex-col items-center gap-2 py-1">
-                  <div className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-                  <p className="text-[12px] text-slate-500">Uploading...</p>
-                </div>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-[28px] text-slate-300">description</span>
-                  <p className="text-[12px] text-slate-500 mt-1">Click to upload .xlsx / .csv</p>
-                </>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-            </div>
-            <p className="text-[11px] text-slate-400 mt-2">
-              Sheet must have a <span className="font-semibold">Book Title</span> column.
-            </p>
-          </div>
-        </div>
+      <ConfirmDialog
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+        loading={deleting}
+        danger
+        title="Delete this title?"
+        description={toDelete ? `“${toDelete.title}” will be removed from the catalogue. Operators will no longer see it when entering challans.` : undefined}
+        confirmLabel="Delete"
+      />
+    </Page>
+  );
+}
 
-        {/* List */}
-        <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between gap-3">
-            <h2 className="text-[15px] font-semibold text-slate-900">
-              All Books <span className="text-slate-400 font-normal">({books.length})</span>
-            </h2>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="bg-white border border-slate-300 rounded px-3 py-1.5 text-[13px] text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-40"
-            />
-          </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-14 text-slate-500 gap-2">
-              <span className="material-symbols-outlined animate-spin">progress_activity</span>
-              Loading...
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="py-14 text-center text-slate-400">
-              <span className="material-symbols-outlined text-[36px] block mb-2 text-slate-300">menu_book</span>
-              {books.length === 0 ? 'No books yet. Add one above.' : 'No books match your search.'}
-            </div>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {filtered.map(book => (
-                <li key={book.id} className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors">
-                  <span className="text-[14px] text-slate-800">{book.title}</span>
-                  <button
-                    onClick={() => handleDelete(book)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
-                    title="Delete book"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">delete</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-    </div>
+function SortTh({ label, active, onClick, className }: { label: string; active: boolean; onClick: () => void; className?: string }) {
+  return (
+    <th className={className} aria-sort={active ? 'ascending' : undefined}>
+      <button type="button" onClick={onClick} className={cn('inline-flex items-center gap-1 hover:text-ink', active && 'text-ink')}>
+        {label}
+        <ArrowDownUp className={cn('size-3', active ? 'opacity-100' : 'opacity-40')} />
+      </button>
+    </th>
   );
 }

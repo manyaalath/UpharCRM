@@ -1,9 +1,9 @@
+import type { Metadata } from 'next';
 import DailyBriefClient from './DailyBriefClient';
-import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'AI Daily Brief | Uphar CRM',
-  description: 'AI-generated daily operational briefing for the sales team.',
+  title: 'Daily brief · Uphar CRM',
+  description: 'Morning summary of follow-ups, overdue calls and rep workload.',
 };
 
 export default function DailyBriefPage() {

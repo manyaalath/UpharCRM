@@ -12,6 +12,12 @@ export function isConfigured(): boolean {
   return !!(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
 }
 
+// The "simulate reply" test tool is available in development, or while
+// WhatsApp runs in stub mode (no live credentials).
+export function simulateAllowed(): boolean {
+  return process.env.NODE_ENV !== 'production' || !isConfigured();
+}
+
 export interface SendResult {
   messageId: string;
   status: 'sent' | 'stubbed' | 'failed';

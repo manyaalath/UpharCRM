@@ -1,6 +1,9 @@
 // ============================================================
-// Uphar CRM — Field Validators
+// Uphar CRM — Field Validators (shared by the challan form and API)
 // ============================================================
+import { todayIST } from './date';
+
+const LEAD_TYPES = ['teacher', 'retail_salesperson', 'shopkeeper', 'institution'];
 
 export interface ValidationResult {
   valid: boolean;
@@ -12,10 +15,20 @@ export function validateChallan(data: Record<string, unknown>): ValidationResult
 
   if (!data.challan_no || String(data.challan_no).trim() === '') {
     fields.challan_no = 'Challan number is required';
+  } else if (String(data.challan_no).length > 50) {
+    fields.challan_no = 'Challan number must be under 50 characters';
   }
 
   if (!data.challan_date) {
     fields.challan_date = 'Date is required';
+  } else if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data.challan_date))) {
+    fields.challan_date = 'Enter a valid date';
+  } else if (String(data.challan_date) > todayIST()) {
+    fields.challan_date = 'Date cannot be in the future';
+  }
+
+  if (data.lead_type && !LEAD_TYPES.includes(String(data.lead_type))) {
+    fields.lead_type = 'Choose a valid lead type';
   }
 
   if (!data.teacher_name || String(data.teacher_name).trim() === '') {

@@ -1,281 +1,327 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import LeadDrawer from './LeadDrawer';
-import { LEAD_STATUS_COLORS, LEAD_STATUS_OPTIONS, Lead } from '@/lib/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { ChevronLeft, ChevronRight, Download, Search, Upload, X } from 'lucide-react';
+import {
+  Button, EmptyState, Input, LeadStatusBadge, LinkButton, Page, PageHeader, Panel, Select, Skeleton, cn,
+} from '@/components/ui';
+import { LEAD_STATUS_OPTIONS } from '@/lib/types';
 import { ALL_DISTRICTS } from '@/lib/constants';
+import { formatDate, relativeDay } from '@/lib/date';
+import { downloadFromApi } from '@/lib/download';
+import LeadDrawer from './LeadDrawer';
+import { formatMobile, leadView, type LeadRow } from './_components/leadFields';
 
-export default function LeadsClient({ initialData, totalCount, agents }: { initialData: Lead[], totalCount: number, agents: string[] }) {
-  const [leads, setLeads] = useState<Lead[]>(initialData);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+const PAGE_SIZE = 25;
 
-  // Filters
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-  const [district, setDistrict] = useState('');
-  const [agentName, setAgentName] = useState('');
-  const [dateStart, setDateStart] = useState('');
-  const [dateEnd, setDateEnd] = useState('');
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'last_contact', label: 'Recently contacted' },
+  { value: 'stale', label: 'Longest without contact' },
+];
 
-  // Pagination
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(totalCount);
-  const limit = 20;
+// Filters that live in the URL. `q` is the search box.
+const FILTER_KEYS = ['q', 'status', 'district', 'rep', 'from', 'to'] as const;
+type FilterKey = (typeof FILTER_KEYS)[number];
 
-  const fetchLeads = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (search) params.append('search', search);
-    if (status) params.append('status', status);
-    if (district) params.append('district', district);
-    if (agentName) params.append('agent_name', agentName);
-    if (dateStart) params.append('date_start', dateStart);
-    if (dateEnd) params.append('date_end', dateEnd);
-    
-    params.append('page', page.toString());
-    params.append('limit', limit.toString());
+export default function LeadsClient({ agents }: { agents: string[] }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
 
-    try {
-      const res = await fetch(`/api/leads?${params.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      
-      setLeads(data.data || []);
-      setTotal(data.pagination?.total || 0);
-    } catch (err) {
-      console.error('Failed to fetch leads:', err);
-    }
-  }, [search, status, district, agentName, dateStart, dateEnd, page]);
+  const filters = useMemo(() => {
+    const f = {} as Record<FilterKey, string>;
+    FILTER_KEYS.forEach(k => { f[k] = params.get(k) || ''; });
+    return f;
+  }, [params]);
+  const sort = params.get('sort') || 'newest';
+  const page = Math.max(1, parseInt(params.get('page') || '1') || 1);
 
+  const [leads, setLeads] = useState<LeadRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<LeadRow | null>(null);
+  const [searchText, setSearchText] = useState(filters.q);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Write params to the URL (replace — filter tweaks shouldn't flood history).
+  const setParams = useCallback((patch: Record<string, string | null>, resetPage = true) => {
+    const next = new URLSearchParams(params.toString());
+    Object.entries(patch).forEach(([k, v]) => (v ? next.set(k, v) : next.delete(k)));
+    if (resetPage) next.delete('page');
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [params, pathname, router]);
+
+  // Debounce the search box into the URL.
   useEffect(() => {
-    fetchLeads();
-  }, [fetchLeads]);
+    if (searchText.trim() === filters.q) return;
+    const t = setTimeout(() => setParams({ q: searchText.trim() || null }), 300);
+    return () => clearTimeout(t);
+  }, [searchText, filters.q, setParams]);
 
-  const handleExport = async () => {
-    // Build export URL with current filters
-    const params = new URLSearchParams();
-    params.append('type', 'leads');
-    if (district) params.append('district', district);
-    if (agentName) params.append('agent_name', agentName);
-    if (dateStart) params.append('date_start', dateStart);
-    if (dateEnd) params.append('date_end', dateEnd);
-
-    try {
-      const res = await fetch(`/api/export?${params.toString()}`);
-      if (!res.ok) {
-        const err = await res.json();
-        alert(err.error || 'Export failed');
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `leads_export_${new Date().toISOString().split('T')[0]}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch {
-      alert('Export failed');
+  // Keep the box in sync when the URL changes from elsewhere (back button, chips).
+  const lastQ = useRef(filters.q);
+  useEffect(() => {
+    if (filters.q !== lastQ.current) {
+      lastQ.current = filters.q;
+      setSearchText(t => (t.trim() === filters.q ? t : filters.q));
     }
+  }, [filters.q]);
+
+  const apiQuery = useMemo(() => {
+    const q = new URLSearchParams();
+    if (filters.q) q.set('search', filters.q);
+    if (filters.status) q.set('status', filters.status);
+    if (filters.district) q.set('district', filters.district);
+    if (filters.rep) q.set('agent_name', filters.rep);
+    if (filters.from) q.set('date_start', filters.from);
+    if (filters.to) q.set('date_end', filters.to);
+    return q;
+  }, [filters]);
+
+  // Fetch; abort the previous request so a slow old response can't overwrite a newer one.
+  useEffect(() => {
+    const ac = new AbortController();
+    const q = new URLSearchParams(apiQuery);
+    q.set('page', String(page));
+    q.set('limit', String(PAGE_SIZE));
+    q.set('sort', sort);
+    setLoading(true);
+    fetch(`/api/leads?${q}`, { signal: ac.signal })
+      .then(async res => {
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || 'Could not load leads');
+        setLeads(json.data || []);
+        setTotal(json.pagination?.total || 0);
+        setError(null);
+        setLoading(false);
+      })
+      .catch(e => {
+        if (e.name === 'AbortError') return;
+        setError(e.message || 'Could not load leads');
+        setLoading(false);
+      });
+    return () => ac.abort();
+  }, [apiQuery, page, sort, reloadKey]);
+
+  const exportLeads = () => {
+    const q = new URLSearchParams({ type: 'leads' });
+    if (filters.district) q.set('district', filters.district);
+    if (filters.rep) q.set('agent_name', filters.rep);
+    if (filters.from) q.set('date_start', filters.from);
+    if (filters.to) q.set('date_end', filters.to);
+    downloadFromApi(`/api/export?${q}`, 'uphar_leads.xlsx');
   };
 
-  const canExport = true;
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const chips: { key: FilterKey | 'range'; label: string; clear: Record<string, null> }[] = [];
+  if (filters.q) chips.push({ key: 'q', label: `“${filters.q}”`, clear: { q: null } });
+  if (filters.status) chips.push({ key: 'status', label: LEAD_STATUS_OPTIONS.find(o => o.value === filters.status)?.label || filters.status, clear: { status: null } });
+  if (filters.district) chips.push({ key: 'district', label: filters.district, clear: { district: null } });
+  if (filters.rep) chips.push({ key: 'rep', label: `Rep: ${filters.rep}`, clear: { rep: null } });
+  if (filters.from || filters.to) {
+    chips.push({
+      key: 'range',
+      label: `Added ${filters.from ? formatDate(filters.from) : '…'} – ${filters.to ? formatDate(filters.to) : 'today'}`,
+      clear: { from: null, to: null },
+    });
+  }
+  const clearAll = () => {
+    setSearchText('');
+    setParams(Object.fromEntries(FILTER_KEYS.map(k => [k, null])));
   };
+
+  const from = total ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const to = Math.min(page * PAGE_SIZE, total);
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const updateRow = useCallback((patch: Partial<LeadRow> & { id: string }) => {
+    setLeads(rows => rows.map(r => (r.id === patch.id ? { ...r, ...patch } : r)));
+  }, []);
+  const closeDrawer = useCallback(() => setSelected(null), []);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto w-full flex flex-col h-[calc(100vh-64px)] overflow-hidden">
-      
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div className="relative">
-          <h1 className="text-[32px] font-bold text-[#1E40AF] mb-2 leading-tight">All Leads</h1>
-          <hr className="w-16 h-[2px] bg-[#1E40AF] border-none absolute -bottom-1 left-0" />
+    <Page wide>
+      <PageHeader
+        title="Leads"
+        description={loading && !leads.length ? 'Loading…' : `${total.toLocaleString('en-IN')} ${chips.length ? 'matching' : 'in total'}`}
+        actions={
+          <Button icon={<Download className="size-3.5" />} onClick={exportLeads}>Export</Button>
+        }
+      />
+
+      {/* Filter bar */}
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center mb-3">
+        <div className="lg:w-[320px] lg:shrink-0">
+          <Input
+            leading={<Search />}
+            type="search"
+            placeholder="Name, phone, institute or lead ID"
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            aria-label="Search leads"
+          />
         </div>
-        <div className="flex gap-3 w-full sm:w-auto">
-          {canExport && (
-            <button onClick={handleExport} className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-md text-slate-900 hover:bg-slate-50 transition-colors text-[13px] font-semibold w-full sm:w-auto shadow-sm">
-              <span className="material-symbols-outlined text-[18px]">download</span>
-              Export
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-1 lg:[&>*]:w-auto lg:[&>*]:min-w-[140px]">
+          <Select value={filters.status} onChange={e => setParams({ status: e.target.value || null })} aria-label="Status">
+            <option value="">All statuses</option>
+            {LEAD_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </Select>
+          <Select value={filters.district} onChange={e => setParams({ district: e.target.value || null })} aria-label="District">
+            <option value="">All districts</option>
+            {ALL_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
+          </Select>
+          <Select value={filters.rep} onChange={e => setParams({ rep: e.target.value || null })} aria-label="Representative">
+            <option value="">All reps</option>
+            {agents.map(a => <option key={a} value={a}>{a}</option>)}
+          </Select>
+          <div className="col-span-2 sm:col-span-2 flex items-center gap-1.5 lg:min-w-[280px]">
+            <Input type="date" value={filters.from} max={filters.to || undefined} onChange={e => setParams({ from: e.target.value || null })} aria-label="Added from" className="text-[12.5px]" />
+            <span className="text-ink-3 text-[12px]">to</span>
+            <Input type="date" value={filters.to} min={filters.from || undefined} onChange={e => setParams({ to: e.target.value || null })} aria-label="Added to" className="text-[12.5px]" />
+          </div>
+          <Select value={sort} onChange={e => setParams({ sort: e.target.value === 'newest' ? null : e.target.value })} aria-label="Sort" className="lg:ml-auto">
+            {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </Select>
+        </div>
+      </div>
+
+      {chips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          {chips.map(c => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => { if (c.key === 'q') setSearchText(''); setParams(c.clear); }}
+              className="inline-flex items-center gap-1 h-6.5 pl-2.5 pr-1.5 rounded-md bg-surface border border-line-strong text-[12.5px] text-ink hover:bg-sunken"
+            >
+              {c.label}
+              <X className="size-3 text-ink-3" aria-label="Remove filter" />
             </button>
-          )}
+          ))}
+          <button type="button" onClick={clearAll} className="ml-1 text-[12.5px] font-medium text-accent hover:underline underline-offset-2">
+            Clear all
+          </button>
         </div>
-      </div>
+      )}
 
-      {/* Filters Area */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 mb-6 shadow-sm flex-shrink-0">
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-          <div className="md:col-span-2">
-            <label className="block text-[13px] font-semibold text-slate-500 mb-1">Search Leads</label>
-            <div className="relative">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
-              <input 
-                type="text" 
-                placeholder="Name, Institute, Phone, Rep..." 
-                value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }}
-                className="w-full bg-white border border-slate-200 rounded-md py-2 pl-10 pr-4 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px]"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-[13px] font-semibold text-slate-500 mb-1">Status</label>
-            <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }} className="w-full bg-white border border-slate-200 rounded-md py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px] outline-none appearance-none">
-              <option value="">All Statuses</option>
-              {LEAD_STATUS_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[13px] font-semibold text-slate-500 mb-1">District</label>
-            <select value={district} onChange={e => { setDistrict(e.target.value); setPage(1); }} className="w-full bg-white border border-slate-200 rounded-md py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px] outline-none appearance-none">
-              <option value="">All Districts</option>
-              {ALL_DISTRICTS.map(d => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[13px] font-semibold text-slate-500 mb-1">Representative</label>
-            <select value={agentName} onChange={e => { setAgentName(e.target.value); setPage(1); }} className="w-full bg-white border border-slate-200 rounded-md py-2 px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1E40AF] text-[14px] outline-none appearance-none">
-              <option value="">All Reps</option>
-              {agents.map(a => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1 col-span-2 md:col-span-1">
-             <label className="block text-[13px] font-semibold text-slate-500 mb-1">Date Range</label>
-             <div className="flex gap-2">
-               <input type="date" value={dateStart} onChange={e => { setDateStart(e.target.value); setPage(1); }} className="w-full bg-white border border-slate-200 rounded-md p-1 text-[12px] focus:outline-none focus:ring-2 focus:ring-[#1E40AF]" />
-               <input type="date" value={dateEnd} onChange={e => { setDateEnd(e.target.value); setPage(1); }} className="w-full bg-white border border-slate-200 rounded-md p-1 text-[12px] focus:outline-none focus:ring-2 focus:ring-[#1E40AF]" />
-             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Leads Table Card */}
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm flex-1 flex flex-col min-h-0">
-        <div className="overflow-x-auto flex-1">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200 shadow-sm">
+      <Panel className="overflow-hidden">
+        <div className="overflow-x-auto max-h-[calc(100dvh-260px)] min-h-[240px]">
+          <table className="data-table">
+            <thead>
               <tr>
-                <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Contact</th>
-                <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Institute</th>
-                <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Status</th>
-                <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Next Due</th>
-                <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500">Representative</th>
-                <th className="py-3 px-4 text-[13px] font-semibold uppercase tracking-wider text-slate-500 text-right">Actions</th>
+                <th>Contact</th>
+                <th>Institute</th>
+                <th className="hidden md:table-cell">Rep</th>
+                <th>Status</th>
+                <th className="hidden lg:table-cell text-right">Visits</th>
+                <th className="hidden md:table-cell">Last contact</th>
+                <th className="hidden xl:table-cell">Added</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 overflow-y-auto">
-              {leads.map((lead: any) => {
-                const colors = LEAD_STATUS_COLORS[lead.status as keyof typeof LEAD_STATUS_COLORS] || LEAD_STATUS_COLORS.new;
-                const instContact = Array.isArray(lead.institute_contacts) ? lead.institute_contacts[0] : lead.institute_contacts;
-                const contact_person = instContact?.contacts?.name || 'Unknown';
-                const mobile_no = instContact?.contacts?.mobile_no || 'Unknown';
-                const institute_name = instContact?.institutes?.name || 'Unknown';
-                const district = instContact?.institutes?.locations?.district || 'Unknown';
-                const agent_name = lead.agents?.name || 'Unassigned';
+            <tbody className={cn(loading && leads.length > 0 && 'opacity-60 transition-opacity')}>
+              {loading && !leads.length && Array.from({ length: 8 }).map((_, i) => (
+                <tr key={i}>
+                  <td><Skeleton className="h-3.5 w-32 mb-1.5" /><Skeleton className="h-3 w-24" /></td>
+                  <td><Skeleton className="h-3.5 w-44 mb-1.5" /><Skeleton className="h-3 w-20" /></td>
+                  <td className="hidden md:table-cell"><Skeleton className="h-3.5 w-20" /></td>
+                  <td><Skeleton className="h-5 w-20" /></td>
+                  <td className="hidden lg:table-cell"><Skeleton className="h-3.5 w-6 ml-auto" /></td>
+                  <td className="hidden md:table-cell"><Skeleton className="h-3.5 w-16" /></td>
+                  <td className="hidden xl:table-cell"><Skeleton className="h-3.5 w-20" /></td>
+                </tr>
+              ))}
 
+              {leads.map(row => {
+                const v = leadView(row);
                 return (
-                  <tr 
-                    key={lead.id} 
-                    onClick={() => setSelectedLead(lead)}
-                    className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                  <tr
+                    key={row.id}
+                    className={cn('is-clickable', selected?.id === row.id && '[&>td]:bg-sunken')}
+                    onClick={() => setSelected(row)}
+                    onKeyDown={e => { if (e.key === 'Enter') setSelected(row); }}
+                    tabIndex={0}
                   >
-                    <td className="py-3 px-4">
-                      <div className="text-[13px] font-semibold text-slate-900">{contact_person}</div>
-                      <div className="font-mono text-slate-500 text-[12px] mt-1">{mobile_no}</div>
+                    <td>
+                      <div className="font-medium text-ink">{v.contact}</div>
+                      <div className="font-mono text-[12px] text-ink-3">{v.mobile ? formatMobile(v.mobile) : '—'}</div>
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="text-[14px] text-slate-900">{institute_name}</div>
-                      <div className="font-hindi-hint text-slate-500 text-[12px] mt-1">{district}</div>
+                    <td className="max-w-[280px]">
+                      <div className="text-ink truncate">{v.institute}</div>
+                      <div className="text-[12px] text-ink-3 truncate">{[v.town, v.district].filter(Boolean).join(', ')}</div>
                     </td>
-                    <td className="py-3 px-4">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-[12px] font-bold ${colors.bg} ${colors.text} border ${colors.border}`}>
-                        {LEAD_STATUS_OPTIONS.find(o => o.value === lead.status)?.label || lead.status}
-                      </span>
-                      {lead.whatsapp_status && lead.whatsapp_status !== 'not_sent' && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <span className="material-symbols-outlined text-[11px]">chat</span>
-                            {String(lead.whatsapp_status).replace('_', ' ')}
-                          </span>
-                          {lead.reply_status && lead.reply_status !== 'awaiting' && (
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${
-                              lead.reply_status === 'positive' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : lead.reply_status === 'negative' ? 'bg-red-50 text-red-700 border-red-200'
-                                : 'bg-amber-50 text-amber-700 border-amber-200'
-                            }`}>
-                              {String(lead.reply_status).replace('_', ' ')}
-                            </span>
-                          )}
-                        </div>
-                      )}
+                    <td className="hidden md:table-cell text-ink-2">{v.rep || <span className="text-ink-3">Unassigned</span>}</td>
+                    <td><LeadStatusBadge status={v.status} /></td>
+                    <td className="hidden lg:table-cell num">{v.visits ?? '—'}</td>
+                    <td className="hidden md:table-cell text-ink-2 whitespace-nowrap">
+                      {v.lastContact ? relativeDay(v.lastContact) : <span className="text-ink-3">Never</span>}
                     </td>
-                    <td className="py-3 px-4 font-mono text-slate-900 text-[14px]">
-                      {lead.next_followup_date ? (
-                        <div className="flex items-center gap-1 text-[#B45309]">
-                          <span className="material-symbols-outlined text-[14px]">event</span>
-                          {formatDate(lead.next_followup_date)}
-                        </div>
-                      ) : (
-                        <span className="text-slate-500">-</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-[14px] text-slate-500">{agent_name}</td>
-                    <td className="py-3 px-4 text-right">
-                      <button className="text-slate-400 group-hover:text-[#1E40AF] transition-colors focus:outline-none p-1 rounded hover:bg-slate-100">
-                        <span className="material-symbols-outlined text-[20px]">chevron_right</span>
-                      </button>
-                    </td>
+                    <td className="hidden xl:table-cell text-ink-3 whitespace-nowrap">{formatDate(v.createdAt)}</td>
                   </tr>
                 );
               })}
-              {leads.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500 text-sm">No leads found.</td>
-                </tr>
-              )}
             </tbody>
           </table>
-        </div>
-        
-        {/* Pagination */}
-        <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex items-center justify-between flex-shrink-0">
-          <div className="font-mono text-[12px] text-slate-500">
-            Showing {leads.length > 0 ? (page - 1) * limit + 1 : 0}-{Math.min(page * limit, total)} of {total} leads
-          </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-1 rounded bg-white border border-slate-200 text-slate-500 hover:text-slate-900 disabled:opacity-50"
-            >
-              <span className="material-symbols-outlined text-[18px]">chevron_left</span>
-            </button>
-            <button 
-              onClick={() => setPage(p => p + 1)}
-              disabled={page * limit >= total}
-              className="p-1 rounded bg-white border border-slate-200 text-slate-500 hover:text-slate-900 disabled:opacity-50"
-            >
-              <span className="material-symbols-outlined text-[18px]">chevron_right</span>
-            </button>
-          </div>
-        </div>
-      </div>
 
-      {/* Drawer */}
-      <LeadDrawer 
-        lead={selectedLead} 
-        onClose={() => setSelectedLead(null)} 
-      />
-    </div>
+          {!loading && error && (
+            <EmptyState
+              title="Leads didn't load"
+              description={error}
+              action={<Button onClick={() => setReloadKey(k => k + 1)}>Try again</Button>}
+            />
+          )}
+
+          {!loading && !error && leads.length === 0 && (
+            chips.length ? (
+              <EmptyState
+                title="No leads match these filters"
+                description="Try a shorter search or remove a filter."
+                action={<Button onClick={clearAll}>Clear filters</Button>}
+              />
+            ) : (
+              <EmptyState
+                title="No leads yet"
+                description="Leads are created when a challan is entered or imported."
+                action={<LinkButton href="/de" variant="primary" icon={<Upload className="size-3.5" />}>Enter or import challans</LinkButton>}
+              />
+            )
+          )}
+        </div>
+
+        {total > 0 && (
+          <div className="flex items-center justify-between gap-3 px-4 h-11 border-t border-line bg-surface">
+            <span className="font-mono text-[12px] text-ink-2">
+              {from.toLocaleString('en-IN')}–{to.toLocaleString('en-IN')} of {total.toLocaleString('en-IN')}
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Previous page"
+                disabled={page <= 1}
+                onClick={() => setParams({ page: page - 1 > 1 ? String(page - 1) : null }, false)}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+              <span className="text-[12px] text-ink-3 px-1">Page {page} of {lastPage}</span>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Next page"
+                disabled={page >= lastPage}
+                onClick={() => setParams({ page: String(page + 1) }, false)}
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </Panel>
+
+      <LeadDrawer lead={selected} onClose={closeDrawer} onLeadUpdated={updateRow} />
+    </Page>
   );
 }

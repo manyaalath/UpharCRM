@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Button } from './Button';
@@ -20,10 +20,9 @@ function useEscape(open: boolean, onClose: () => void) {
   }, [open, onClose]);
 }
 
+// Overlays only open after user interaction, so document always exists by then.
 function Portal({ children }: { children: ReactNode }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  return mounted ? createPortal(children, document.body) : null;
+  return typeof document === 'undefined' ? null : createPortal(children, document.body);
 }
 
 // Right-side sheet. Full-screen on mobile.

@@ -2,62 +2,59 @@ import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import groq, { AI_MODEL } from '@/lib/ai/groqClient';
 import { BASE_SYSTEM_PROMPT, DASHBOARD_SUMMARY_PROMPT } from '@/lib/ai/prompts';
+import { computeAnalytics, filtersFromParams } from '@/app/api/dashboard/analytics';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+// POST /api/ai/dashboard-summary?from=&to=&district= — summary of the same live
+// numbers the dashboard shows (not the stale materialized views).
+export async function POST(request: Request) {
+  if (!process.env.GROQ_API_KEY) {
+    return NextResponse.json(
+      { error: 'AI summaries are not configured on this server (GROQ_API_KEY is missing).', code: 'ai_not_configured' },
+      { status: 503 }
+    );
+  }
+
   try {
     const supabase = await createClient();
-
-    // 1. Gather high-level stats for context
-    const [
-      { count: totalChallans },
-      { count: totalLeads },
-      { count: pendingFollowups },
-      { data: districtStats },
-      { data: bookStats },
-      { data: overdueFollowups }
-    ] = await Promise.all([
-      supabase.from('challans').select('*', { count: 'exact', head: true }),
-      supabase.from('leads').select('*', { count: 'exact', head: true }),
-      supabase.from('follow_ups').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-      supabase.from('mv_district_stats').select('*').order('total_leads', { ascending: false }).limit(10),
-      supabase.from('mv_book_stats').select('*').order('total_distributed', { ascending: false }).limit(10),
-      supabase.from('follow_ups').select('id').eq('status', 'overdue')
-    ]);
+    const a = await computeAnalytics(supabase, filtersFromParams(new URL(request.url).searchParams));
 
     const aiContext = {
-      global_metrics: {
-        total_challans: totalChallans || 0,
-        total_leads: totalLeads || 0,
-        pending_followups: pendingFollowups || 0,
-        overdue_followups: overdueFollowups?.length || 0
+      period: a.range.from ? `${a.range.from} to ${a.range.to}` : 'all time',
+      district_filter: a.district || 'all districts',
+      metrics: {
+        challans: a.summary.challans,
+        leads: a.summary.leads,
+        books_distributed: a.summary.books,
+        pending_followups: a.summary.pending_followups,
+        overdue_followups: a.summary.overdue_followups,
+        districts_covered: a.summary.districts_covered,
       },
-      top_districts: districtStats || [],
-      top_books: bookStats || []
+      top_districts: a.districts.slice(0, 10),
+      top_books: a.books.slice(0, 10),
+      reps: a.reps.slice(0, 15),
+      lead_status: a.lead_status,
     };
 
-    // 2. Call Groq AI
     const completion = await groq.chat.completions.create({
       messages: [
         { role: 'system', content: BASE_SYSTEM_PROMPT },
         { role: 'system', content: DASHBOARD_SUMMARY_PROMPT },
-        { role: 'user', content: JSON.stringify(aiContext) }
+        { role: 'user', content: JSON.stringify(aiContext) },
       ],
       model: AI_MODEL,
-      temperature: 0.3, 
-      response_format: { type: "json_object" }
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
     });
 
-    const aiResponseContent = completion.choices[0]?.message?.content;
-    if (!aiResponseContent) throw new Error('AI returned empty response');
+    const content = completion.choices[0]?.message?.content;
+    if (!content) throw new Error('AI returned an empty response');
 
-    const parsedResponse = JSON.parse(aiResponseContent);
-
-    return NextResponse.json({ data: parsedResponse });
-
-  } catch (error: any) {
+    return NextResponse.json({ data: JSON.parse(content), generated_at: new Date().toISOString() });
+  } catch (error) {
     console.error('Dashboard AI API Error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Internal Server Error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

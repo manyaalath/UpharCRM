@@ -2,95 +2,125 @@ import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import groq, { AI_MODEL } from '@/lib/ai/groqClient';
 import { BASE_SYSTEM_PROMPT, LEAD_INTELLIGENCE_PROMPT } from '@/lib/ai/prompts';
+import { todayIST } from '@/lib/date';
+
+const one = <T,>(v: T | T[] | null | undefined): T | undefined => (Array.isArray(v) ? v[0] : v ?? undefined);
+
+type Named = { name?: string } | null;
 
 export async function POST(request: Request) {
+  if (!process.env.GROQ_API_KEY) {
+    return NextResponse.json(
+      { error: 'AI summaries are not set up yet. Add GROQ_API_KEY to the server environment.', code: 'ai_not_configured' },
+      { status: 503 }
+    );
+  }
+
   try {
-    const { lead_id } = await request.json();
+    const { lead_id } = await request.json().catch(() => ({}));
     if (!lead_id) return NextResponse.json({ error: 'lead_id is required' }, { status: 400 });
 
     const supabase = await createClient();
 
-    // 1. Fetch Lead & Institute Details
-    const { data: lead, error: leadError } = await supabase
-      .from('leads')
-      .select(`
-        id, lead_seq_id, status, created_at,
-        institute_contacts (
-          contacts (name, mobile_no),
-          institutes (name, address_line, village_town, locality, locations(district, state, pincode))
-        ),
-        agents (name)
-      `)
-      .eq('id', lead_id)
-      .single();
+    const [leadRes, followUpsRes, callsRes, challansRes] = await Promise.all([
+      supabase
+        .from('leads')
+        .select(`
+          id, lead_seq_id, status, lead_type, created_at, last_contact_date,
+          institute_contacts (
+            contacts (name),
+            institutes (name, village_town, locations(district))
+          ),
+          agents (name)
+        `)
+        .eq('id', lead_id)
+        .maybeSingle(),
+      // follow_ups columns: followup_date, status, remarks, updated_at (no call outcome here)
+      supabase
+        .from('follow_ups')
+        .select('followup_date, status, remarks, updated_at, agents(name)')
+        .eq('lead_id', lead_id)
+        .order('followup_date', { ascending: false }),
+      // Call outcomes live in call_feedback.
+      supabase
+        .from('call_feedback')
+        .select('call_outcome, suggestions, complaints, remarks, created_at')
+        .eq('lead_id', lead_id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('challans')
+        .select('challan_date, challan_no, challan_books(quantity, books(title))')
+        .eq('lead_id', lead_id)
+        .order('challan_date', { ascending: false }),
+    ]);
 
-    if (leadError || !lead) throw new Error('Failed to fetch lead');
+    const queryError = leadRes.error || followUpsRes.error || callsRes.error || challansRes.error;
+    if (queryError) {
+      console.error('Lead summary query failed:', queryError);
+      return NextResponse.json({ error: `Could not load lead history: ${queryError.message}` }, { status: 500 });
+    }
+    const lead = leadRes.data;
+    if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
 
-    // 2. Fetch Follow-ups (Interaction History & Feedback)
-    const { data: followUps } = await supabase
-      .from('follow_ups')
-      .select('followup_date, status, remarks, is_physical_visit, call_outcome, updated_at, agents(name)')
-      .eq('lead_id', lead_id)
-      .order('followup_date', { ascending: false });
+    const ic = one(lead.institute_contacts as unknown as Record<string, unknown> | Record<string, unknown>[]);
+    const contact = one(ic?.contacts as Named | Named[]);
+    const institute = one(ic?.institutes as { name?: string; village_town?: string; locations?: { district?: string } | { district?: string }[] } | null);
 
-    // 3. Fetch Challans (Books Distributed)
-    const { data: challans } = await supabase
-      .from('challans')
-      .select('id, challan_date, challan_no, challan_books(quantity, books(title))')
-      .eq('lead_id', lead_id);
-
-    // Flatten nested relationships for the AI context to save tokens
-    const instContact = Array.isArray(lead.institute_contacts) ? lead.institute_contacts[0] : lead.institute_contacts;
-    
-    const books_distributed = challans?.flatMap(c => 
-      c.challan_books?.map((cb: any) => `${cb.quantity}x ${cb.books?.title}`)
-    ) || [];
-
+    // Compact context to keep tokens low.
     const aiContext = {
-      lead_info: {
+      today: todayIST(),
+      lead: {
         id: lead.lead_seq_id,
         status: lead.status,
-        agent_assigned: (lead.agents as any)?.name || 'Unassigned',
-        created_at: lead.created_at
+        type: lead.lead_type,
+        rep: one(lead.agents as unknown as Named | Named[])?.name || 'Unassigned',
+        created: lead.created_at?.slice(0, 10),
+        last_contact: lead.last_contact_date,
       },
-      contact_info: {
-        person: (instContact as any)?.contacts?.name,
-        institute: (instContact as any)?.institutes?.name,
-        district: (instContact as any)?.institutes?.locations?.district
+      contact: {
+        person: contact?.name,
+        institute: institute?.name,
+        town: institute?.village_town,
+        district: one(institute?.locations)?.district,
       },
-      books_distributed: books_distributed,
-      total_challans: challans?.length || 0,
-      interaction_history: followUps?.map(f => ({
-        date: f.followup_date,
+      specimen_visits: (challansRes.data || []).map(c => ({
+        date: c.challan_date,
+        books: ((c.challan_books || []) as unknown as { quantity: number; books: { title: string } | { title: string }[] | null }[])
+          .map(cb => `${cb.quantity || 1}x ${one(cb.books)?.title}`),
+      })),
+      calls: (callsRes.data || []).map(c => ({
+        date: c.created_at?.slice(0, 10),
+        outcome: c.call_outcome,
+        suggestion: c.suggestions || undefined,
+        complaint: c.complaints || undefined,
+        remarks: c.remarks || undefined,
+      })),
+      follow_ups: (followUpsRes.data || []).map(f => ({
+        due: f.followup_date,
         status: f.status,
-        remarks: f.remarks,
-        type: f.is_physical_visit ? 'Physical Visit' : 'Call',
-        call_outcome: f.call_outcome,
-        agent: (f.agents as any)?.name || 'Unknown'
-      })) || []
+        remarks: f.remarks || undefined,
+        rep: one(f.agents as unknown as Named | Named[])?.name,
+      })),
     };
 
-    // Call Groq AI
     const completion = await groq.chat.completions.create({
       messages: [
         { role: 'system', content: BASE_SYSTEM_PROMPT },
         { role: 'system', content: LEAD_INTELLIGENCE_PROMPT },
-        { role: 'user', content: JSON.stringify(aiContext) }
+        { role: 'user', content: JSON.stringify(aiContext) },
       ],
       model: AI_MODEL,
-      temperature: 0.2, // Low temperature for analytical consistency
-      response_format: { type: "json_object" }
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
     });
 
-    const aiResponseContent = completion.choices[0]?.message?.content;
-    if (!aiResponseContent) throw new Error('AI returned empty response');
+    const content = completion.choices[0]?.message?.content;
+    if (!content) throw new Error('AI returned an empty response');
 
-    const parsedResponse = JSON.parse(aiResponseContent);
-
-    return NextResponse.json({ data: parsedResponse });
-
-  } catch (error: any) {
-    console.error('AI API Error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ data: JSON.parse(content), generated_at: new Date().toISOString() });
+  } catch (error) {
+    console.error('AI lead summary error:', error);
+    const message = error instanceof Error ? error.message : 'Internal Server Error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

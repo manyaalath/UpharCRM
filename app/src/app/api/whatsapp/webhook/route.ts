@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { recordStatusUpdate, handleInboundReply } from '@/lib/whatsapp/service';
+import { createHmac, timingSafeEqual } from 'crypto';
+import { recordStatusUpdate, handleInboundReply, isWhatsAppEnabled } from '@/lib/whatsapp/service';
 
 // GET — Meta webhook verification handshake.
 export async function GET(request: Request) {
@@ -14,11 +15,35 @@ export async function GET(request: Request) {
   return new Response('Forbidden', { status: 403 });
 }
 
+// Meta signs every POST with HMAC-SHA256(app secret, raw body) in X-Hub-Signature-256.
+function signatureValid(rawBody: string, header: string | null, secret: string): boolean {
+  if (!header?.startsWith('sha256=')) return false;
+  const expected = createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex');
+  const given = header.slice('sha256='.length);
+  if (given.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(given, 'hex'), Buffer.from(expected, 'hex'));
+}
+
 // POST — inbound messages + delivery status callbacks (Meta Cloud API shape).
-// Always returns 200 quickly so Meta doesn't retry storms; handling is idempotent.
+// Returns 200 quickly so Meta doesn't retry storms; handling is idempotent.
 export async function POST(request: Request) {
+  const rawBody = await request.text();
+
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+  if (appSecret) {
+    if (!signatureValid(rawBody, request.headers.get('x-hub-signature-256'), appSecret)) {
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
+  } else if (isWhatsAppEnabled()) {
+    // Live mode without a secret would let anyone forge replies.
+    console.error('WhatsApp webhook: WHATSAPP_APP_SECRET is not set while WHATSAPP_ENABLED=true — rejecting');
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 });
+  } else {
+    console.warn('WhatsApp webhook: WHATSAPP_APP_SECRET is not set; accepting unsigned payload (WhatsApp disabled)');
+  }
+
   try {
-    const body = await request.json();
+    const body = JSON.parse(rawBody || '{}');
     const entries = body?.entry || [];
 
     for (const entry of entries) {

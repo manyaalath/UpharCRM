@@ -23,7 +23,7 @@ export async function GET(
   const bookMap = new Map<string, { id: string; title: string; total_quantity: number; challans: { challan_no: string; challan_date: string; quantity: number }[] }>();
 
   for (const challan of challans || []) {
-    const challanBooks = (challan as any).challan_books || [];
+    const challanBooks = ((challan as unknown as { challan_books?: Array<{ quantity: number; books: { id: string; title: string } | null }> }).challan_books) || [];
     for (const cb of challanBooks) {
       const book = cb.books;
       if (!book) continue;

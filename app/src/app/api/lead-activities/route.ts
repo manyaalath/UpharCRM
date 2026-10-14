@@ -9,13 +9,14 @@ export async function GET(request: Request) {
   if (!leadId) {
     return NextResponse.json({ error: 'lead_id is required' }, { status: 422 });
   }
+  const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '50') || 50));
 
   const { data, error } = await supabase
     .from('lead_activities')
     .select('*')
     .eq('lead_id', leadId)
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(limit);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

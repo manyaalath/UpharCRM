@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { isConfigured, simulateAllowed } from '@/lib/whatsapp/meta';
 
 // GET /api/leads/[id]/whatsapp — WhatsApp status + message + reply history for a lead.
 export async function GET(
@@ -29,6 +30,9 @@ export async function GET(
       reply_status: leadRes.data?.reply_status || 'awaiting',
       messages: messagesRes.data || [],
       replies: repliesRes.data || [],
+      // No live Meta credentials: messages are logged, not sent.
+      stub: !isConfigured(),
+      can_simulate: simulateAllowed(),
     },
   });
 }

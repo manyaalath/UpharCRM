@@ -44,7 +44,7 @@ export async function GET() {
 
   // Example row
   const exampleRow = [
-    'Ramesh Kumar',
+    'EXAMPLE - Ramesh Kumar (delete this row)',
     'Teacher',
     '9876543210',
     '',
