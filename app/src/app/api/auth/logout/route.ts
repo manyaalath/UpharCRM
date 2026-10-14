@@ -1,25 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { LEGACY_COOKIES, SESSION_COOKIE } from '@/lib/auth';
 
-export async function POST(request: NextRequest) {
-  const { type } = await request.json().catch(() => ({ type: 'all' }));
-  const res = NextResponse.json({ ok: true });
-
-  // Clear all auth cookies
-  if (type === 'de') {
-    res.cookies.delete('de_auth');
-    res.cookies.delete('app_auth');
-  } else if (type === 'book') {
-    res.cookies.delete('book_auth');
-  } else if (type === 'crm') {
-    res.cookies.delete('crm_auth');
-    res.cookies.delete('app_auth');
-  } else {
-    // Clear all
-    res.cookies.delete('crm_auth');
-    res.cookies.delete('de_auth');
-    res.cookies.delete('book_auth');
-    res.cookies.delete('app_auth');
-  }
-
+function clear(res: NextResponse) {
+  res.cookies.delete(SESSION_COOKIE);
+  LEGACY_COOKIES.forEach(c => res.cookies.delete(c));
   return res;
+}
+
+export async function POST() {
+  return clear(NextResponse.json({ ok: true }));
+}
+
+// GET is used by server layouts to sign out a revoked account and land on /login.
+export async function GET(request: Request) {
+  const reason = new URL(request.url).searchParams.get('reason');
+  const url = new URL('/login', request.url);
+  if (reason) url.searchParams.set('reason', reason);
+  return clear(NextResponse.redirect(url));
 }

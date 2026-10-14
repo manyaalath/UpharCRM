@@ -1,114 +1,206 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { ArrowRight, CircleAlert, Clock } from 'lucide-react';
+import { Button, Field, Input, cn } from '@/components/ui';
 
-export default function LoginPage() {
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+type Mode = 'signin' | 'request';
+type Product = 'challans' | 'books';
+
+const DESKS = [
+  { name: 'CRM', who: 'Admins, managers, telecallers', what: 'Leads, follow-up calls, district and rep analytics' },
+  { name: 'Challan entry', who: 'Back-office operators', what: 'Key in paper challans, bulk Excel import' },
+  { name: 'Book catalogue', who: 'Catalogue team', what: 'Add and maintain specimen titles' },
+];
+
+function LoginForm() {
   const router = useRouter();
+  const params = useSearchParams();
+  const [mode, setMode] = useState<Mode>('signin');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [product, setProduct] = useState<Product>('challans');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(
+    params.get('reason') === 'revoked' ? 'Your access was changed by an admin. Please sign in again.' : null
+  );
+  const [pending, setPending] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-
     try {
-      const res = await fetch('/api/auth/crm-login', {
+      const res = await fetch(mode === 'signin' ? '/api/auth/login' : '/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify(mode === 'signin' ? { email, password } : { name, email, password, product }),
       });
-
-      if (res.ok) {
-        router.push('/dashboard');
+      const data = await res.json().catch(() => ({}));
+      if (data.status === 'pending') {
+        setPending(true);
+        return;
+      }
+      if (res.ok && data.redirect) {
+        const next = params.get('next');
+        router.replace(next && next.startsWith('/') && !next.startsWith('//') ? next : data.redirect);
         router.refresh();
         return;
       }
-
-      const data = await res.json();
-      setError(data.error || 'Invalid password');
+      setError(data.error || 'Something went wrong. Try again.');
     } catch {
-      setError('Something went wrong. Try again.');
+      setError('Could not reach the server. Check your connection.');
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
-      <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200/60 overflow-hidden shadow-xl shadow-slate-200/50">
-        {/* Header */}
-        <div className="px-8 pt-10 pb-4 flex flex-col items-center">
-          <div className="w-16 h-16 bg-gradient-to-br from-[#DBEAFE] to-[#93C5FD]/30 rounded-2xl flex items-center justify-center mb-4 border border-[#1E40AF]/10 shadow-md shadow-blue-100">
-            <span
-              className="material-symbols-outlined text-[#1E40AF] text-[32px]"
-              style={{ fontVariationSettings: "'FILL' 1" }}
-            >
-              admin_panel_settings
-            </span>
-          </div>
-          <h1 className="text-[28px] font-bold text-[#1E40AF] text-center tracking-tight">
-            Uphar CRM
-          </h1>
-          <p className="text-[14px] text-slate-500 text-center mt-1">Sign in to your account</p>
-          <div className="w-12 h-[2px] bg-gradient-to-r from-transparent via-[#1E40AF] to-transparent mt-5 rounded-full" />
+  if (pending) {
+    return (
+      <div>
+        <div className="flex items-center gap-2 text-warn mb-3">
+          <Clock className="size-5" />
+          <span className="text-[13px] font-semibold">Waiting for approval</span>
         </div>
-
-        {/* Form */}
-        <div className="px-8 pb-10">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-            {error && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
-                <span className="material-symbols-outlined text-[18px]">error</span>
-                {error}
-              </div>
-            )}
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoFocus
-                placeholder="Enter your password"
-                className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 text-[15px] transition-all"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 px-4 bg-[#1E40AF] text-white rounded-xl text-[14px] font-semibold hover:bg-[#1e3a8a] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1E40AF] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-200/50"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>
-                  Signing in...
-                </span>
-              ) : (
-                'Sign In'
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 pt-5 border-t border-slate-100 flex flex-col items-center gap-3">
-            <Link
-              href="/login/data-entry"
-              className="text-[13px] text-[#1E40AF] hover:text-[#1E3A8A] font-semibold transition-colors"
-            >
-              Data Entry Portal Login →
-            </Link>
-            <Link href="/" className="text-[12px] text-slate-400 hover:text-slate-600 transition-colors">
-              ← Back to home
-            </Link>
-          </div>
-        </div>
+        <h2 className="font-serif text-[24px] font-semibold text-ink leading-tight">Your request is with the admin</h2>
+        <p className="mt-2 text-[13.5px] text-ink-2">
+          You can sign in with <span className="font-medium text-ink">{email}</span> once an admin approves it.
+        </p>
+        <Button className="mt-6" onClick={() => { setPending(false); setMode('signin'); }}>Back to sign in</Button>
       </div>
+    );
+  }
+
+  return (
+    <div>
+      <h2 className="font-serif text-[26px] font-semibold text-ink leading-tight">
+        {mode === 'signin' ? 'Sign in' : 'Request access'}
+      </h2>
+      <p className="mt-1 text-[13.5px] text-ink-2">
+        {mode === 'signin'
+          ? 'Use your work email. Your account opens the right desk.'
+          : 'An admin approves new accounts before first sign-in.'}
+      </p>
+
+      <form onSubmit={submit} className="mt-6 flex flex-col gap-4">
+        {error && (
+          <div role="alert" className="flex items-start gap-2 rounded-md bg-bad-soft px-3 py-2.5 text-[13px] text-bad">
+            <CircleAlert className="size-4 mt-0.5 shrink-0" />
+            {error}
+          </div>
+        )}
+
+        {mode === 'request' && (
+          <Field label="Full name" htmlFor="name" required>
+            <Input id="name" value={name} onChange={e => setName(e.target.value)} autoComplete="name" required />
+          </Field>
+        )}
+
+        <Field label="Email" htmlFor="email" required>
+          <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" autoFocus required className="h-10" />
+        </Field>
+
+        <Field label="Password" htmlFor="password" required hint={mode === 'request' ? 'At least 8 characters' : undefined}>
+          <Input
+            id="password"
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+            minLength={mode === 'request' ? 8 : undefined}
+            required
+            className="h-10"
+          />
+        </Field>
+
+        {mode === 'request' && (
+          <fieldset>
+            <legend className="block text-[12.5px] font-medium text-ink-2 mb-1.5">I need access to</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                ['challans', 'Challan entry'],
+                ['books', 'Book catalogue'],
+              ] as const).map(([value, label]) => (
+                <label
+                  key={value}
+                  className={cn(
+                    'flex items-center gap-2 h-10 px-3 rounded-md border cursor-pointer text-[13px] transition-colors',
+                    product === value ? 'border-accent bg-accent-soft text-ink' : 'border-line-strong text-ink-2 hover:bg-sunken'
+                  )}
+                >
+                  <input type="radio" name="product" value={value} checked={product === value} onChange={() => setProduct(value)} className="accent-[var(--color-accent)]" />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[12px] text-ink-3">CRM roles (manager, telecaller) are assigned by the admin.</p>
+          </fieldset>
+        )}
+
+        <Button type="submit" variant="primary" size="lg" loading={loading} className="mt-1 w-full">
+          {mode === 'signin' ? 'Sign in' : 'Send request'}
+          {!loading && <ArrowRight className="size-4" />}
+        </Button>
+      </form>
+
+      <p className="mt-6 text-[13px] text-ink-2">
+        {mode === 'signin' ? 'New here? ' : 'Already approved? '}
+        <button
+          type="button"
+          onClick={() => { setMode(mode === 'signin' ? 'request' : 'signin'); setError(null); }}
+          className="font-medium text-accent hover:underline underline-offset-2"
+        >
+          {mode === 'signin' ? 'Request access' : 'Sign in'}
+        </button>
+      </p>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <div className="min-h-dvh grid lg:grid-cols-[1.1fr_1fr] bg-paper">
+      {/* Brand side */}
+      <section className="hidden lg:flex flex-col justify-between border-r border-line px-14 py-12 bg-sunken/60">
+        <div>
+          <div className="font-deva text-[34px] font-bold text-ink leading-none">उपहार प्रकाशन</div>
+          <div className="mt-2 text-[13px] text-ink-2 tracking-wide">Specimen distribution CRM</div>
+        </div>
+
+        <div className="max-w-md">
+          <p className="font-serif text-[28px] leading-[1.2] text-ink">
+            Every specimen handed to a teacher is the start of a relationship.
+          </p>
+          <div className="mt-10 border-t border-line-strong">
+            {DESKS.map(d => (
+              <div key={d.name} className="grid grid-cols-[140px_1fr] gap-4 py-3.5 border-b border-line">
+                <div className="text-[13px] font-semibold text-ink">{d.name}</div>
+                <div>
+                  <div className="text-[13px] text-ink">{d.what}</div>
+                  <div className="text-[12px] text-ink-3 mt-0.5">{d.who}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="text-[12px] text-ink-3">Bihar · Jharkhand — restricted access</div>
+      </section>
+
+      {/* Form side */}
+      <section className="flex flex-col justify-center px-6 py-10 sm:px-12">
+        <div className="lg:hidden mb-10">
+          <div className="font-deva text-[28px] font-bold text-ink leading-none">उपहार प्रकाशन</div>
+          <div className="mt-1.5 text-[12.5px] text-ink-2">Specimen distribution CRM</div>
+        </div>
+        <div className="w-full max-w-[380px]">
+          <Suspense>
+            <LoginForm />
+          </Suspense>
+        </div>
+      </section>
     </div>
   );
 }

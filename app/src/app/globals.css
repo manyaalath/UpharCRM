@@ -1,27 +1,139 @@
 @import "tailwindcss";
 
-/* Material Symbols settings */
-.material-symbols-outlined {
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+/* ============================================================
+   Uphar CRM — "publisher's ledger" design tokens
+   Warm paper surfaces, ink text, hairline rules, one brick accent.
+   Use these via Tailwind: bg-paper, text-ink-2, border-line, bg-accent …
+   Never hardcode hex colors in components.
+   ============================================================ */
+@theme {
+  --color-paper: #f7f5f0;        /* app background */
+  --color-surface: #ffffff;      /* panels, tables */
+  --color-sunken: #f1eee7;       /* table headers, inputs hover, wells */
+  --color-line: #e4dfd4;         /* hairline borders */
+  --color-line-strong: #cfc8b8;  /* input borders, dividers that matter */
+
+  --color-ink: #1b2230;          /* primary text */
+  --color-ink-2: #4a5263;        /* secondary text */
+  --color-ink-3: #7a8090;        /* muted / meta */
+
+  --color-accent: #b4432b;       /* brick — primary actions only */
+  --color-accent-hover: #983821;
+  --color-accent-soft: #f6e4de;
+
+  --color-ok: #2f7a4f;
+  --color-ok-soft: #e3f1e8;
+  --color-warn: #a86a12;
+  --color-warn-soft: #faefd9;
+  --color-bad: #b42b2b;
+  --color-bad-soft: #f8e1e1;
+  --color-info: #2c5a8c;
+  --color-info-soft: #e2ecf6;
+
+  /* Categorical chart palette (ordered). */
+  --color-chart-1: #2c5a8c;
+  --color-chart-2: #b4432b;
+  --color-chart-3: #a86a12;
+  --color-chart-4: #2f7a4f;
+  --color-chart-5: #6b4c7a;
+  --color-chart-6: #5d6b78;
+
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-source-serif), ui-serif, Georgia, serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --font-deva: var(--font-mukta), var(--font-plex-sans), sans-serif;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --shadow-pop: 0 8px 24px -6px rgb(27 34 48 / 0.18), 0 2px 6px -2px rgb(27 34 48 / 0.08);
 }
 
-/* Custom scrollbar */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    font-feature-settings: "ss01" on;
+  }
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  /* Numbers line up in tables and KPIs. */
+  .tabular, td, th {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Dense data table. Wrap in a Panel; add .data-table to <table>. */
+  .data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+  }
+  .data-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--color-sunken);
+    color: var(--color-ink-2);
+    font-weight: 600;
+    font-size: 12px;
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-line);
+    white-space: nowrap;
+  }
+  .data-table tbody td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--color-line);
+    vertical-align: middle;
+  }
+  .data-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .data-table tbody tr.is-clickable {
+    cursor: pointer;
+  }
+  .data-table tbody tr.is-clickable:hover td {
+    background: #fbfaf7;
+  }
+  .data-table .num {
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+  }
+}
+
+/* Scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: #f8fafc;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--color-line-strong);
+  border-radius: 999px;
+  border: 3px solid var(--color-paper);
 }
 
-body {
-  background: #F8FAFC;
-  color: #0F172A;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

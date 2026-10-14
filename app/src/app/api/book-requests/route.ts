@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { verifyCookie } from '@/lib/auth';
+import { getRequestSession } from '@/lib/session';
 
-async function requireCRM(request: NextRequest) {
-  const token = request.cookies.get('crm_auth')?.value;
-  if (!token) return false;
-  const payload = await verifyCookie(token);
-  return payload === 'crm';
+// Admin only (also enforced in proxy).
+async function requireAdmin(request: NextRequest) {
+  const session = await getRequestSession(request);
+  return session?.role === 'admin';
 }
 
 export async function GET(request: NextRequest) {
-  if (!(await requireCRM(request))) {
+  if (!(await requireAdmin(request))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -36,7 +35,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!(await requireCRM(request))) {
+  if (!(await requireAdmin(request))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
