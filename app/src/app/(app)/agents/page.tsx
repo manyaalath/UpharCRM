@@ -73,28 +73,30 @@ export default function RepresentativesPage() {
       <Panel className="overflow-hidden">
         <PanelHeader
           title="All representatives"
-          meta={loading ? undefined : `${agents.length} active`}
-          actions={
-            <div className="w-48 hidden sm:block">
-              <Input leading={<Search />} placeholder="Filter" value={query} onChange={e => setQuery(e.target.value)} className="h-7.5" />
-            </div>
-          }
+          meta={loading ? undefined : `${agents.filter(a => a.is_active).length} active`}
         />
 
-        <form onSubmit={handleAdd} className="flex items-center gap-2 px-4 py-3 border-b border-line bg-sunken/40">
-          <div className="flex-1">
-            <Input
-              placeholder="New representative's full name"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              aria-label="New representative name"
-              maxLength={100}
-            />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center px-3 sm:px-4 py-3 border-b border-line">
+          <form onSubmit={handleAdd} className="flex flex-1 gap-2">
+            <div className="flex-1">
+              <Input
+                leading={<UserRound />}
+                placeholder="Add a rep: full name, then Enter"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                aria-label="New representative name"
+                maxLength={100}
+                enterKeyHint="done"
+              />
+            </div>
+            <Button type="submit" variant="primary" loading={adding} disabled={!newName.trim()} icon={<Plus className="size-3.5" />}>
+              Add
+            </Button>
+          </form>
+          <div className="sm:w-56">
+            <Input leading={<Search />} type="search" placeholder="Filter names" aria-label="Filter representatives" value={query} onChange={e => setQuery(e.target.value)} />
           </div>
-          <Button type="submit" variant="primary" loading={adding} disabled={!newName.trim()} icon={<Plus className="size-3.5" />}>
-            Add
-          </Button>
-        </form>
+        </div>
 
         {loading ? (
           <div className="p-4 flex flex-col gap-3">
@@ -114,7 +116,7 @@ export default function RepresentativesPage() {
                   <th className="w-12 num">#</th>
                   <th>Name</th>
                   <th>Status</th>
-                  <th>Added</th>
+                  <th className="hidden sm:table-cell">Added</th>
                 </tr>
               </thead>
               <tbody>
@@ -125,7 +127,7 @@ export default function RepresentativesPage() {
                     <td>
                       <Badge tone={a.is_active ? 'ok' : 'neutral'} dot>{a.is_active ? 'Active' : 'Inactive'}</Badge>
                     </td>
-                    <td className="text-ink-2 whitespace-nowrap">{formatDate(a.created_at)}</td>
+                    <td className="hidden sm:table-cell text-ink-2 whitespace-nowrap">{formatDate(a.created_at)}</td>
                   </tr>
                 ))}
               </tbody>

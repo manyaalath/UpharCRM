@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Button, Dialog, Field, Input, Select, Textarea, cn } from '@/components/ui';
-import { CALL_OUTCOME_OPTIONS, LEAD_STATUS_OPTIONS, type CallOutcome } from '@/lib/types';
-import { addDaysIST, todayIST } from '@/lib/date';
+import { Button, Chip, Dialog, Field, Input, Select, Textarea } from '@/components/ui';
+import { LEAD_STATUS_OPTIONS } from '@/lib/types';
+import { addDaysIST, formatDate, todayIST } from '@/lib/date';
+import { CallForm, emptyCallForm, forgetLeadContext, notifyRefresh, type CallFormState } from '../../follow-ups/shared';
 
 // Status dropdown that saves immediately.
 export function LeadStatusSelect({
@@ -38,29 +39,28 @@ export function LeadStatusSelect({
       value={status}
       disabled={saving}
       onChange={e => change(e.target.value)}
-      className={cn('h-8 text-[13px]', className)}
+      searchable={false}
+      className={className}
     >
       {LEAD_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </Select>
   );
 }
 
-const OUTCOME_KEYS = CALL_OUTCOME_OPTIONS.map((o, i) => ({ ...o, key: String(i + 1) }));
-
+// Same questions as call mode: what happened, when to call next, any notes.
 export function LogCallDialog({
   leadId, open, onClose, onSaved,
 }: { leadId: string; open: boolean; onClose: () => void; onSaved: () => void }) {
-  const [outcome, setOutcome] = useState<CallOutcome | ''>('');
-  const [remarks, setRemarks] = useState('');
+  const [form, setForm] = useState<CallFormState>(emptyCallForm);
   const [suggestions, setSuggestions] = useState('');
   const [complaints, setComplaints] = useState('');
   const [more, setMore] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const reset = () => { setOutcome(''); setRemarks(''); setSuggestions(''); setComplaints(''); setMore(false); };
+  const reset = () => { setForm(emptyCallForm()); setSuggestions(''); setComplaints(''); setMore(false); };
 
   const save = async () => {
-    if (!outcome) return;
+    if (!form.outcome || saving) return;
     setSaving(true);
     try {
       const res = await fetch('/api/call-feedback', {
@@ -68,15 +68,20 @@ export function LogCallDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           lead_id: leadId,
-          call_outcome: outcome,
-          remarks: remarks || null,
+          call_outcome: form.outcome,
+          remarks: form.remarks || null,
           suggestions: suggestions || null,
           complaints: complaints || null,
+          next_followup_date: form.nextDate || undefined,
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'Could not save the call');
-      toast.success('Call logged');
+      toast.success('Call logged', {
+        description: form.nextDate ? `Next call ${formatDate(form.nextDate)}` : 'No further follow-up',
+      });
+      forgetLeadContext(leadId);
+      notifyRefresh();
       reset();
       onSaved();
       onClose();
@@ -92,62 +97,44 @@ export function LogCallDialog({
       open={open}
       onClose={onClose}
       title="Log call"
-      description="Pick what happened on the call."
+      className="sm:max-w-lg"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={save} loading={saving} disabled={!outcome}>Save call</Button>
+          <Button variant="primary" onClick={save} loading={saving} disabled={!form.outcome}>
+            {form.outcome ? 'Save call' : 'Pick an outcome'}
+          </Button>
         </>
       }
     >
-      <div
-        className="grid grid-cols-2 gap-1.5"
-        role="radiogroup"
-        aria-label="Call outcome"
-        onKeyDown={e => {
-          const hit = OUTCOME_KEYS.find(o => o.key === e.key);
-          if (hit) { e.preventDefault(); setOutcome(hit.value); }
-        }}
-      >
-        {OUTCOME_KEYS.map(o => (
-          <button
-            key={o.value}
-            type="button"
-            role="radio"
-            aria-checked={outcome === o.value}
-            onClick={() => setOutcome(o.value)}
-            className={cn(
-              'flex items-center gap-2 h-9 px-2.5 rounded-md border text-left text-[13px] transition-colors',
-              outcome === o.value ? 'border-accent bg-accent-soft text-ink' : 'border-line-strong text-ink-2 hover:bg-sunken'
-            )}
-          >
-            <span className="font-mono text-[11px] text-ink-3 w-3">{o.key}</span>
-            {o.label}
+      <div onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); } }}>
+        <CallForm value={form} onChange={setForm} />
+
+        {more ? (
+          <div className="mt-4 grid gap-3">
+            <Field label="Suggestion" htmlFor="call-sugg">
+              <Textarea id="call-sugg" rows={2} value={suggestions} onChange={e => setSuggestions(e.target.value)} />
+            </Field>
+            <Field label="Complaint" htmlFor="call-comp">
+              <Textarea id="call-comp" rows={2} value={complaints} onChange={e => setComplaints(e.target.value)} />
+            </Field>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setMore(true)} className="mt-3 h-9 md:h-auto text-[12.5px] font-medium text-accent hover:underline underline-offset-2">
+            Add a suggestion or complaint
           </button>
-        ))}
+        )}
       </div>
-
-      <Field label="Remarks" htmlFor="call-remarks" className="mt-3">
-        <Textarea id="call-remarks" rows={2} value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="What did they say?" />
-      </Field>
-
-      {more ? (
-        <div className="mt-3 grid gap-3">
-          <Field label="Suggestion" htmlFor="call-sugg">
-            <Textarea id="call-sugg" rows={2} value={suggestions} onChange={e => setSuggestions(e.target.value)} />
-          </Field>
-          <Field label="Complaint" htmlFor="call-comp">
-            <Textarea id="call-comp" rows={2} value={complaints} onChange={e => setComplaints(e.target.value)} />
-          </Field>
-        </div>
-      ) : (
-        <button type="button" onClick={() => setMore(true)} className="mt-2 text-[12.5px] font-medium text-accent hover:underline underline-offset-2">
-          Add suggestion or complaint
-        </button>
-      )}
     </Dialog>
   );
 }
+
+const QUICK = [
+  { label: 'Tomorrow', days: 1 },
+  { label: 'In 3 days', days: 3 },
+  { label: 'Next week', days: 7 },
+  { label: 'In 2 weeks', days: 14 },
+];
 
 export function ScheduleFollowUpDialog({
   leadId, open, onClose, onSaved,
@@ -155,13 +142,7 @@ export function ScheduleFollowUpDialog({
   const [date, setDate] = useState(addDaysIST(3));
   const [remarks, setRemarks] = useState('');
   const [saving, setSaving] = useState(false);
-
-  const quick = [
-    { label: 'Tomorrow', days: 1 },
-    { label: 'In 3 days', days: 3 },
-    { label: 'Next week', days: 7 },
-    { label: 'In 2 weeks', days: 14 },
-  ];
+  const today = todayIST();
 
   const save = async () => {
     setSaving(true);
@@ -173,7 +154,8 @@ export function ScheduleFollowUpDialog({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'Could not schedule the follow-up');
-      toast.success('Follow-up scheduled');
+      toast.success(`Follow-up scheduled for ${formatDate(date)}`);
+      notifyRefresh();
       setRemarks('');
       onSaved();
       onClose();
@@ -192,30 +174,18 @@ export function ScheduleFollowUpDialog({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={save} loading={saving} disabled={!date}>Schedule</Button>
+          <Button variant="primary" onClick={save} loading={saving} disabled={!date || date < today}>Schedule</Button>
         </>
       }
     >
       <div className="flex flex-wrap gap-1.5 mb-3">
-        {quick.map(q => {
-          const value = addDaysIST(q.days);
-          return (
-            <button
-              key={q.days}
-              type="button"
-              onClick={() => setDate(value)}
-              className={cn(
-                'h-7 px-2.5 rounded-md border text-[12.5px] transition-colors',
-                date === value ? 'border-accent bg-accent-soft text-ink' : 'border-line-strong text-ink-2 hover:bg-sunken'
-              )}
-            >
-              {q.label}
-            </button>
-          );
+        {QUICK.map(q => {
+          const value = addDaysIST(q.days, today);
+          return <Chip key={q.days} selected={date === value} onClick={() => setDate(value)}>{q.label}</Chip>;
         })}
       </div>
-      <Field label="Date" htmlFor="fu-date" required>
-        <Input id="fu-date" type="date" min={todayIST()} value={date} onChange={e => setDate(e.target.value)} />
+      <Field label="Date" htmlFor="fu-date" required error={date && date < today ? 'Pick today or a later date' : undefined}>
+        <Input id="fu-date" type="date" min={today} value={date} onChange={e => setDate(e.target.value)} />
       </Field>
       <Field label="Note" htmlFor="fu-note" className="mt-3">
         <Textarea id="fu-note" rows={2} value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Why call back?" />

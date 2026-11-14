@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Download, Search, Upload, X } from 'lucide-react';
 import {
-  Button, EmptyState, Input, LeadStatusBadge, LinkButton, Page, PageHeader, Panel, Select, Skeleton, cn,
+  Button, DateRange, EmptyState, Input, LeadStatusBadge, LinkButton, Page, PageHeader, Panel, Select, Skeleton, cn,
 } from '@/components/ui';
 import { LEAD_STATUS_OPTIONS } from '@/lib/types';
 import { ALL_DISTRICTS } from '@/lib/constants';
@@ -154,8 +154,8 @@ export default function LeadsClient({ agents }: { agents: string[] }) {
       />
 
       {/* Filter bar */}
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center mb-3">
-        <div className="lg:w-[320px] lg:shrink-0">
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-center mb-3">
+        <div className="xl:w-[300px] xl:shrink-0">
           <Input
             leading={<Search />}
             type="search"
@@ -165,7 +165,7 @@ export default function LeadsClient({ agents }: { agents: string[] }) {
             aria-label="Search leads"
           />
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-1 lg:[&>*]:w-auto lg:[&>*]:min-w-[140px]">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-[repeat(3,minmax(0,1fr))_minmax(250px,1.4fr)_minmax(0,1.1fr)] xl:flex-1">
           <Select value={filters.status} onChange={e => setParams({ status: e.target.value || null })} aria-label="Status">
             <option value="">All statuses</option>
             {LEAD_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -178,12 +178,15 @@ export default function LeadsClient({ agents }: { agents: string[] }) {
             <option value="">All reps</option>
             {agents.map(a => <option key={a} value={a}>{a}</option>)}
           </Select>
-          <div className="col-span-2 sm:col-span-2 flex items-center gap-1.5 lg:min-w-[280px]">
-            <Input type="date" value={filters.from} max={filters.to || undefined} onChange={e => setParams({ from: e.target.value || null })} aria-label="Added from" className="text-[12.5px]" />
-            <span className="text-ink-3 text-[12px]">to</span>
-            <Input type="date" value={filters.to} min={filters.from || undefined} onChange={e => setParams({ to: e.target.value || null })} aria-label="Added to" className="text-[12.5px]" />
-          </div>
-          <Select value={sort} onChange={e => setParams({ sort: e.target.value === 'newest' ? null : e.target.value })} aria-label="Sort" className="lg:ml-auto">
+          <DateRange
+            label="Date added"
+            className="col-span-2 lg:col-span-1"
+            from={filters.from}
+            to={filters.to}
+            onFrom={v => setParams({ from: v || null })}
+            onTo={v => setParams({ to: v || null })}
+          />
+          <Select value={sort} onChange={e => setParams({ sort: e.target.value === 'newest' ? null : e.target.value })} aria-label="Sort by" searchable={false}>
             {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </Select>
         </div>
@@ -196,20 +199,47 @@ export default function LeadsClient({ agents }: { agents: string[] }) {
               key={c.key}
               type="button"
               onClick={() => { if (c.key === 'q') setSearchText(''); setParams(c.clear); }}
-              className="inline-flex items-center gap-1 h-6.5 pl-2.5 pr-1.5 rounded-md bg-surface border border-line-strong text-[12.5px] text-ink hover:bg-sunken"
+              className="inline-flex items-center gap-1 h-8 md:h-6.5 pl-2.5 pr-1.5 rounded-md bg-accent-soft text-[12.5px] text-ink hover:brightness-95"
             >
               {c.label}
               <X className="size-3 text-ink-3" aria-label="Remove filter" />
             </button>
           ))}
-          <button type="button" onClick={clearAll} className="ml-1 text-[12.5px] font-medium text-accent hover:underline underline-offset-2">
+          <button type="button" onClick={clearAll} className="ml-1 h-8 md:h-auto text-[12.5px] font-medium text-accent hover:underline underline-offset-2">
             Clear all
           </button>
         </div>
       )}
 
       <Panel className="overflow-hidden">
-        <div className="overflow-x-auto max-h-[calc(100dvh-260px)] min-h-[240px]">
+        {/* Phones: a tappable list. One lead per row, nothing to scroll sideways. */}
+        <ul className={cn('md:hidden divide-y divide-line', loading && leads.length > 0 && 'opacity-60 transition-opacity')}>
+          {loading && !leads.length && Array.from({ length: 6 }).map((_, i) => (
+            <li key={i} className="px-4 py-3">
+              <Skeleton className="h-4 w-40 mb-2" /><Skeleton className="h-3 w-56" />
+            </li>
+          ))}
+          {leads.map(row => {
+            const v = leadView(row);
+            return (
+              <li key={row.id}>
+                <button type="button" onClick={() => setSelected(row)} className="block w-full px-4 py-3 text-left active:bg-sunken">
+                  <span className="flex items-start justify-between gap-3">
+                    <span className="min-w-0 text-[14.5px] font-medium text-ink truncate">{v.contact}</span>
+                    <LeadStatusBadge status={v.status} />
+                  </span>
+                  <span className="mt-0.5 block text-[13px] text-ink-2 truncate">{v.institute}</span>
+                  <span className="mt-1 flex items-center justify-between gap-3 text-[12px] text-ink-3">
+                    <span className="truncate">{[v.town, v.district].filter(Boolean).join(', ') || '—'}</span>
+                    <span className="shrink-0">{v.lastContact ? `Called ${relativeDay(v.lastContact).toLowerCase()}` : 'Never called'}</span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="hidden md:block overflow-x-auto max-h-[calc(100dvh-260px)] min-h-[240px]">
           <table className="data-table">
             <thead>
               <tr>
@@ -265,7 +295,9 @@ export default function LeadsClient({ agents }: { agents: string[] }) {
               })}
             </tbody>
           </table>
+        </div>
 
+        <div>
           {!loading && error && (
             <EmptyState
               title="Leads didn't load"
@@ -292,7 +324,7 @@ export default function LeadsClient({ agents }: { agents: string[] }) {
         </div>
 
         {total > 0 && (
-          <div className="flex items-center justify-between gap-3 px-4 h-11 border-t border-line bg-surface">
+          <div className="flex items-center justify-between gap-3 pl-4 pr-2 min-h-12 border-t border-line bg-surface">
             <span className="font-mono text-[12px] text-ink-2">
               {from.toLocaleString('en-IN')}–{to.toLocaleString('en-IN')} of {total.toLocaleString('en-IN')}
             </span>

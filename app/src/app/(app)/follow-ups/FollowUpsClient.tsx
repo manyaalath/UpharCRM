@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { List, PhoneCall } from 'lucide-react';
-import { Page, PageHeader, cn } from '@/components/ui';
+import { Page, PageHeader, Segmented, Tabs } from '@/components/ui';
 import CallMode from './CallMode';
 import FollowUpList from './FollowUpList';
 import type { QueueCounts } from './shared';
@@ -54,26 +54,16 @@ export default function FollowUpsClient() {
         title="Follow-ups"
         description={description}
         actions={
-          <div className="inline-flex rounded-md border border-line-strong bg-surface p-0.5" role="tablist" aria-label="View">
-            {([
-              ['list', 'List', <List key="i" className="size-3.5" />],
-              ['call', `Call mode${callQueue ? ` · ${callQueue}` : ''}`, <PhoneCall key="i" className="size-3.5" />],
-            ] as const).map(([value, label, icon]) => (
-              <button
-                key={value}
-                role="tab"
-                aria-selected={mode === value}
-                onClick={() => setParam('mode', value === 'list' ? null : value)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 h-8 px-3 rounded-[5px] text-[13px] font-medium transition-colors',
-                  mode === value ? 'bg-ink text-white' : 'text-ink-2 hover:text-ink'
-                )}
-              >
-                {icon}
-                {label}
-              </button>
-            ))}
-          </div>
+          <Segmented<Mode>
+            label="View"
+            full
+            value={mode}
+            onChange={v => setParam('mode', v === 'list' ? null : v)}
+            options={[
+              { value: 'list', label: 'List', icon: <List className="size-3.5" /> },
+              { value: 'call', label: `Call mode${callQueue ? ` · ${callQueue}` : ''}`, icon: <PhoneCall className="size-3.5" /> },
+            ]}
+          />
         }
       />
 
@@ -81,26 +71,16 @@ export default function FollowUpsClient() {
         <CallMode onChanged={loadCounts} />
       ) : (
         <>
-          <div className="flex gap-5 border-b border-line mb-4" role="tablist" aria-label="Follow-up status">
-            {([
-              ['open', 'To do', counts ? counts.overdue + counts.due_today + counts.upcoming : null],
-              ['completed', 'Completed', null],
-            ] as const).map(([value, label, count]) => (
-              <button
-                key={value}
-                role="tab"
-                aria-selected={tab === value}
-                onClick={() => setParam('tab', value === 'open' ? null : value)}
-                className={cn(
-                  '-mb-px h-9 border-b-2 text-[13.5px] font-medium transition-colors',
-                  tab === value ? 'border-accent text-ink' : 'border-transparent text-ink-2 hover:text-ink'
-                )}
-              >
-                {label}
-                {count != null && <span className="ml-1.5 font-mono text-[12px] text-ink-3">{count}</span>}
-              </button>
-            ))}
-          </div>
+          <Tabs<Tab>
+            label="Follow-up status"
+            className="mb-4"
+            value={tab}
+            onChange={v => setParam('tab', v === 'open' ? null : v)}
+            items={[
+              { value: 'open', label: 'To do', count: counts ? counts.overdue + counts.due_today + counts.upcoming : null },
+              { value: 'completed', label: 'Completed' },
+            ]}
+          />
           <FollowUpList key={tab} tab={tab} counts={counts} onChanged={loadCounts} />
         </>
       )}

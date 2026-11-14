@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Check, Link2, Loader2, Minus, Plus, UserPlus, X } from 'lucide-react';
-import { Badge, Button, Field, Input, Kbd, LeadStatusBadge, Panel, PanelHeader, Select, cn } from '@/components/ui';
+import { Badge, Button, Callout, Field, Input, Kbd, LeadStatusBadge, Panel, PanelHeader, Select, cn } from '@/components/ui';
 import { BIHAR_DISTRICTS, JHARKHAND_DISTRICTS } from '@/lib/constants';
 import { LEAD_TYPE_OPTIONS } from '@/lib/types';
 import { validateChallan } from '@/lib/validators';
@@ -316,14 +316,34 @@ export default function ChallanForm() {
       return;
     }
     const target = e.target as HTMLElement;
-    if (target.dataset.enter === 'self' || target.tagName === 'BUTTON' || target.tagName === 'TEXTAREA') return;
+    const isDropdown = target.getAttribute('role') === 'combobox' && target.tagName === 'BUTTON';
+    // An empty dropdown opens on Enter; one that already has a value moves on.
+    if (isDropdown && !target.dataset.value) return;
+    if (target.dataset.enter === 'self' || (target.tagName === 'BUTTON' && !isDropdown) || target.tagName === 'TEXTAREA') return;
     e.preventDefault();
-    const fields = Array.from(
-      formRef.current?.querySelectorAll<HTMLElement>('input:not([type=hidden]):not([disabled]), select:not([disabled])') || []
-    ).filter(el => el.offsetParent !== null && el.tabIndex !== -1);
-    const next = fields[fields.indexOf(target) + 1];
-    next?.focus();
+    focusNextField(target);
   };
+
+  const focusNextField = (from: Element | null) => {
+    const fields = Array.from(
+      formRef.current?.querySelectorAll<HTMLElement>(
+        'input:not([type=hidden]):not([type=radio]):not([disabled]), button[role=combobox]:not([disabled])'
+      ) || []
+    ).filter(el => el.offsetParent !== null && el.tabIndex !== -1);
+    const i = from ? fields.indexOf(from as HTMLElement) : -1;
+    if (i >= 0) fields[i + 1]?.focus();
+  };
+  // After picking from a dropdown, carry on to the next field.
+  const afterPick = () => focusNextField(document.activeElement);
+
+  // Warn before a reload or tab close throws away a half-typed challan.
+  const dirty = !!(form.challan_no || form.teacher_name || form.mobile_no || form.institute_name || form.address || specimens.length);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
   const addRep = async () => {
     const name = newRep.trim();
@@ -356,7 +376,7 @@ export default function ChallanForm() {
   const totalCopies = specimens.reduce((n, s) => n + s.quantity, 0);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
+    <div className="grid gap-5 lg:gap-6 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
       <form
         ref={formRef}
         onSubmit={e => { e.preventDefault(); submit(); }}
@@ -417,6 +437,7 @@ export default function ChallanForm() {
                         name="agent_name"
                         value={agentName}
                         onChange={e => { setAgentName(e.target.value); setErrors(x => ({ ...x, agent_name: '' })); }}
+                        onCommit={afterPick}
                         aria-invalid={!!errors.agent_name}
                       >
                         <option value="">Select rep</option>
@@ -435,7 +456,7 @@ export default function ChallanForm() {
           <Section title="Contact">
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="Lead type" htmlFor="lead_type" required error={errors.lead_type}>
-                <Select id="lead_type" name="lead_type" value={form.lead_type} onChange={e => set('lead_type', e.target.value)}>
+                <Select id="lead_type" name="lead_type" value={form.lead_type} onChange={e => set('lead_type', e.target.value)} onCommit={afterPick}>
                   {LEAD_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </Select>
               </Field>
@@ -464,14 +485,19 @@ export default function ChallanForm() {
             </div>
 
             {match && (
-              <div className="mt-4 rounded-md border border-warn/40 bg-warn-soft/60 p-3.5">
-                <div className="flex flex-wrap items-center gap-2 text-[13px]">
-                  <Link2 className="size-4 text-warn" />
-                  <span className="font-medium text-ink">This number already has a lead</span>
-                  <span className="font-mono text-[12px] text-ink-2">{match.lead_id}</span>
-                  <LeadStatusBadge status={match.status} />
-                </div>
-                <div className="mt-2 text-[13px] text-ink">
+              <Callout
+                tone="warn"
+                icon={<Link2 />}
+                className="mt-4"
+                title={
+                  <>
+                    This number already has a lead
+                    <span className="font-mono text-[12px] font-normal text-ink-2">{match.lead_id}</span>
+                    <LeadStatusBadge status={match.status} />
+                  </>
+                }
+              >
+                <div className="text-[13px] text-ink">
                   {match.contact_person || 'Unknown'} · {match.institute_name || 'No institute'}
                   {match.district && <span className="text-ink-2"> · {match.district}</span>}
                 </div>
@@ -479,17 +505,14 @@ export default function ChallanForm() {
                   Last visit {match.last_visit ? formatDate(match.last_visit) : '—'}
                   {match.last_books.length > 0 && <> · {match.last_books.slice(0, 3).join(', ')}{match.last_books.length > 3 && ` +${match.last_books.length - 3}`}</>}
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="How to save this challan">
+                <div className="mt-3 flex flex-col gap-x-6 gap-y-1 sm:flex-row" role="radiogroup" aria-label="How to save this challan">
                   {([
                     ['attach_to_lead', `Attach to ${match.lead_id}`, 'Same person, new visit'],
                     ['create_new', 'Create a new lead', 'Different person, shared number'],
                   ] as const).map(([value, label, help]) => (
                     <label
                       key={value}
-                      className={cn(
-                        'flex items-start gap-2 rounded-md border px-3 py-2 cursor-pointer bg-surface',
-                        matchChoice === value ? 'border-accent ring-1 ring-accent/30' : 'border-line-strong hover:border-ink-3'
-                      )}
+                      className="flex items-start gap-2.5 py-1.5 cursor-pointer"
                     >
                       <input
                         type="radio"
@@ -497,17 +520,16 @@ export default function ChallanForm() {
                         value={value}
                         checked={matchChoice === value}
                         onChange={() => setMatchChoice(value)}
-                        className="mt-0.5 accent-[var(--color-accent)]"
-                        tabIndex={-1}
+                        className="mt-0.5 size-4 accent-[var(--color-accent)]"
                       />
                       <span>
-                        <span className="block text-[13px] font-medium text-ink">{label}</span>
+                        <span className={cn('block text-[13px] text-ink', matchChoice === value && 'font-medium')}>{label}</span>
                         <span className="block text-[12px] text-ink-2">{help}</span>
                       </span>
                     </label>
                   ))}
                 </div>
-              </div>
+              </Callout>
             )}
           </Section>
 
@@ -558,7 +580,7 @@ export default function ChallanForm() {
                     </Button>
                   </div>
                 ) : (
-                  <Select id="state" name="state" value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value, district: e.target.value === 'Other' ? 'Other' : '', other_district: '' }))}>
+                  <Select id="state" name="state" value={form.state} onCommit={afterPick} onChange={e => setForm(f => ({ ...f, state: e.target.value, district: e.target.value === 'Other' ? 'Other' : '', other_district: '' }))}>
                     {STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </Select>
                 )}
@@ -567,7 +589,7 @@ export default function ChallanForm() {
                 {form.district === 'Other' || form.state === 'Other' ? (
                   <Input id="district" name="district" value={form.other_district} onChange={e => { setForm(f => ({ ...f, district: 'Other', other_district: e.target.value })); setErrors(x => ({ ...x, district: '' })); }} placeholder="District name" aria-invalid={!!errors.district} />
                 ) : (
-                  <Select id="district" name="district" value={form.district} onChange={e => set('district', e.target.value)} aria-invalid={!!errors.district}>
+                  <Select id="district" name="district" value={form.district} onChange={e => set('district', e.target.value)} onCommit={afterPick} aria-invalid={!!errors.district}>
                     <option value="">Select district</option>
                     {districtOptions.map(d => <option key={d} value={d}>{d}</option>)}
                     <option value="Other">Other…</option>
@@ -588,18 +610,18 @@ export default function ChallanForm() {
           </Section>
         </Panel>
 
-        <div className="sticky bottom-0 z-10 mt-4 -mx-4 md:mx-0 px-4 md:px-0 py-3 bg-paper/95 backdrop-blur border-t border-line md:border-0 flex items-center justify-between gap-3">
+        <div className="sticky bottom-0 z-10 mt-4 -mx-4 sm:mx-0 px-4 sm:px-0 pt-3 pb-[calc(var(--safe-b)+0.75rem)] bg-paper/95 backdrop-blur border-t border-line sm:border-0 flex items-center justify-between gap-3">
           <div className="hidden sm:flex items-center gap-1.5 text-[12px] text-ink-3">
             <Kbd>Enter</Kbd> next field <span className="mx-1">·</span> <Kbd>Ctrl</Kbd><Kbd>Enter</Kbd> save
           </div>
-          <div className="flex gap-2 ml-auto">
-            <Button variant="ghost" onClick={resetForNext} disabled={saving}>Clear</Button>
-            <Button type="submit" variant="primary" loading={saving}>Save &amp; next</Button>
+          <div className="flex gap-2 ml-auto w-full sm:w-auto">
+            <Button variant="ghost" onClick={resetForNext} disabled={saving || !dirty}>Clear</Button>
+            <Button type="submit" variant="primary" loading={saving} className="flex-1 sm:flex-none sm:min-w-32">Save &amp; next</Button>
           </div>
         </div>
       </form>
 
-      <aside className="hidden lg:block sticky top-20">
+      <aside className="lg:sticky lg:top-20">
         <Panel>
           <PanelHeader title="Saved this session" meta={recent.length ? `${recent.length}` : undefined} />
           {recent.length === 0 ? (
@@ -716,7 +738,7 @@ function SpecimenPicker({
                 aria-selected={i === active}
                 onMouseDown={e => { e.preventDefault(); add(b.title); }}
                 onMouseEnter={() => setActive(i)}
-                className={cn('px-3 py-1.5 text-[13px] cursor-pointer', i === active ? 'bg-sunken text-ink' : 'text-ink-2')}
+                className={cn('px-3 py-2.5 md:py-1.5 text-[14px] md:text-[13px] cursor-pointer', i === active ? 'bg-sunken text-ink' : 'text-ink-2')}
               >
                 {b.title}
               </li>
@@ -732,12 +754,12 @@ function SpecimenPicker({
       {error && <p className="mt-1 text-[12px] text-bad">{error}</p>}
 
       {value.length > 0 && (
-        <ul className="mt-3 divide-y divide-line rounded-md border border-line">
+        <ul className="mt-2 divide-y divide-line border-b border-line">
           {value.map(v => (
-            <li key={v.title} className="flex items-center gap-3 px-3 py-1.5">
+            <li key={v.title} className="flex items-center gap-2 sm:gap-3 py-1.5">
               <span className="flex-1 min-w-0 truncate text-[13px] text-ink">{v.title}</span>
-              <div className="flex items-center rounded-md border border-line-strong">
-                <button type="button" tabIndex={-1} onClick={() => setQty(v.title, v.quantity - 1)} className="h-7 w-7 grid place-items-center text-ink-2 hover:bg-sunken" aria-label={`Fewer copies of ${v.title}`}>
+              <div className="flex items-center rounded-md bg-sunken">
+                <button type="button" tabIndex={-1} onClick={() => setQty(v.title, v.quantity - 1)} disabled={v.quantity <= 1} className="size-9 md:size-7 grid place-items-center rounded-md text-ink-2 hover:bg-line disabled:opacity-40" aria-label={`Fewer copies of ${v.title}`}>
                   <Minus className="size-3.5" />
                 </button>
                 <input
@@ -747,14 +769,14 @@ function SpecimenPicker({
                   onChange={e => setQty(v.title, parseInt(e.target.value, 10))}
                   data-enter="self"
                   tabIndex={-1}
-                  className="w-10 h-7 text-center font-mono text-[12.5px] bg-transparent border-x border-line-strong focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                  className="w-9 h-9 md:h-7 text-center font-mono text-[16px] md:text-[12.5px] text-ink bg-transparent focus:outline-none focus-visible:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
                   aria-label={`Copies of ${v.title}`}
                 />
-                <button type="button" tabIndex={-1} onClick={() => setQty(v.title, v.quantity + 1)} className="h-7 w-7 grid place-items-center text-ink-2 hover:bg-sunken" aria-label={`More copies of ${v.title}`}>
+                <button type="button" tabIndex={-1} onClick={() => setQty(v.title, v.quantity + 1)} className="size-9 md:size-7 grid place-items-center rounded-md text-ink-2 hover:bg-line" aria-label={`More copies of ${v.title}`}>
                   <Plus className="size-3.5" />
                 </button>
               </div>
-              <button type="button" tabIndex={-1} onClick={() => onChange(value.filter(x => x.title !== v.title))} className="h-7 w-7 grid place-items-center rounded-md text-ink-3 hover:bg-bad-soft hover:text-bad" aria-label={`Remove ${v.title}`}>
+              <button type="button" tabIndex={-1} onClick={() => onChange(value.filter(x => x.title !== v.title))} className="size-9 md:size-7 grid place-items-center rounded-md text-ink-3 hover:bg-bad-soft hover:text-bad" aria-label={`Remove ${v.title}`}>
                 <X className="size-3.5" />
               </button>
             </li>

@@ -184,7 +184,7 @@ export default function BooksPage() {
       />
 
       <Panel>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center px-3 py-3 border-b border-line">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center px-3 sm:px-4 py-3 border-b border-line">
           <form onSubmit={e => { e.preventDefault(); addOne(); }} className="flex flex-1 gap-2">
             <div className="flex-1">
               <Input
@@ -218,8 +218,8 @@ export default function BooksPage() {
                 <tr>
                   <SortTh label="Title" active={sort.key === 'title'} onClick={() => toggleSort('title')} />
                   <SortTh label="Copies given" active={sort.key === 'copies'} onClick={() => toggleSort('copies')} className="text-right" />
-                  <th className="text-right">Challans</th>
-                  <SortTh label="Added" active={sort.key === 'created_at'} onClick={() => toggleSort('created_at')} />
+                  <th className="hidden sm:table-cell text-right">Challans</th>
+                  <SortTh label="Added" active={sort.key === 'created_at'} onClick={() => toggleSort('created_at')} className="hidden sm:table-cell" />
                   <th className="w-12"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
@@ -230,8 +230,8 @@ export default function BooksPage() {
                     <tr key={b.id} className="group">
                       <td className="text-ink">{b.title}</td>
                       <td className="num">{(b.copies || 0).toLocaleString('en-IN')}</td>
-                      <td className="num text-ink-2">{b.challans || 0}</td>
-                      <td className="text-ink-2 whitespace-nowrap">{formatDate(b.created_at)}</td>
+                      <td className="hidden sm:table-cell num text-ink-2">{b.challans || 0}</td>
+                      <td className="hidden sm:table-cell text-ink-2 whitespace-nowrap">{formatDate(b.created_at)}</td>
                       <td className="text-right">
                         <Button
                           variant="quiet-danger"
@@ -240,7 +240,7 @@ export default function BooksPage() {
                           disabled={used}
                           title={used ? 'Already distributed — cannot be deleted' : 'Delete title'}
                           aria-label={`Delete ${b.title}`}
-                          className="opacity-60 group-hover:opacity-100"
+                          className="md:opacity-60 md:group-hover:opacity-100"
                         >
                           <Trash2 className="size-4" />
                         </Button>
@@ -287,7 +287,7 @@ export default function BooksPage() {
 
 function SortTh({ label, active, onClick, className }: { label: string; active: boolean; onClick: () => void; className?: string }) {
   return (
-    <th className={className} aria-sort={active ? 'ascending' : undefined}>
+    <th className={className} aria-sort={active ? 'other' : undefined}>
       <button type="button" onClick={onClick} className={cn('inline-flex items-center gap-1 hover:text-ink', active && 'text-ink')}>
         {label}
         <ArrowDownUp className={cn('size-3', active ? 'opacity-100' : 'opacity-40')} />

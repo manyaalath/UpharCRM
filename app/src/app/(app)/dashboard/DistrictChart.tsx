@@ -39,7 +39,7 @@ export default function DistrictChart({ data, onSelect }: { data: Row[]; onSelec
           <YAxis
             type="category"
             dataKey="district"
-            width={118}
+            width={104}
             axisLine={false}
             tickLine={false}
             tick={{ fontSize: 12, fill: 'var(--color-ink-2)' }}

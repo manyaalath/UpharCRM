@@ -173,7 +173,7 @@ export default function CallMode({ onChanged }: { onChanged: () => void }) {
   const progress = queue.length ? Math.round((doneCount / queue.length) * 100) : 0;
 
   return (
-    <div className="pb-24 md:pb-0">
+    <div className="pb-20 md:pb-0">
       {/* Progress */}
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-baseline gap-2">
@@ -196,7 +196,7 @@ export default function CallMode({ onChanged }: { onChanged: () => void }) {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
         {/* Main card */}
         <Panel className="overflow-hidden">
-          <div className="px-5 pt-5 pb-4 border-b border-line">
+          <div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-4 border-b border-line">
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <Badge tone={overdue ? 'bad' : 'warn'} dot>{overdue ? `Overdue · ${relativeDay(current.followup_date)}` : 'Due today'}</Badge>
               <LeadStatusBadge status={current.lead_status} />
@@ -214,24 +214,24 @@ export default function CallMode({ onChanged }: { onChanged: () => void }) {
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {current.mobile_no ? (
-                <a href={`tel:${current.mobile_no}`} className={buttonClass('primary', 'lg', 'min-h-11 px-5 text-[15px]')}>
+                <a href={`tel:${current.mobile_no}`} className={buttonClass('primary', 'lg', 'flex-1 sm:flex-none')}>
                   <Phone className="size-4" /> Call <span className="font-mono">{formatPhone(current.mobile_no)}</span>
                 </a>
               ) : (
                 <span className="text-[13px] text-ink-3">No phone number on record</span>
               )}
               {wa && (
-                <a href={wa} target="_blank" rel="noreferrer" className={buttonClass('secondary', 'lg', 'min-h-11')}>
+                <a href={wa} target="_blank" rel="noreferrer" className={buttonClass('secondary', 'lg')}>
                   <MessageCircle className="size-4" /> WhatsApp
                 </a>
               )}
-              <Link href={`/leads/${current.lead_id}`} className={buttonClass('ghost', 'lg', 'min-h-11 ml-auto')}>
+              <Link href={`/leads/${current.lead_id}`} className={buttonClass('ghost', 'lg', 'w-full sm:w-auto sm:ml-auto')}>
                 Open lead <ExternalLink className="size-3.5" />
               </Link>
             </div>
           </div>
 
-          <div className="px-5 py-5">
+          <div className="px-4 sm:px-5 py-5">
             {currentDone ? (
               <div className="flex flex-wrap items-center gap-2 text-[13.5px] text-ink-2">
                 <CheckCircle2 className="size-4 text-ok" /> Logged as <OutcomeBadge value={currentDone} />
@@ -258,15 +258,15 @@ export default function CallMode({ onChanged }: { onChanged: () => void }) {
         </Panel>
 
         {/* Context */}
-        <Panel className="p-5">
+        <Panel className="px-4 sm:px-5 py-4 sm:py-5">
           <LeadContextPanel leadId={current.lead_id} remarks={current.remarks} />
         </Panel>
       </div>
 
       {/* Mobile sticky action bar (sits above the bottom nav) */}
       {!currentDone && (
-        <div className="md:hidden fixed inset-x-0 bottom-16 z-40 border-t border-line bg-surface/95 backdrop-blur px-4 py-3 flex gap-2">
-          <Button variant="secondary" size="lg" className="min-h-11" onClick={goNext}>Skip</Button>
+        <div className="md:hidden fixed inset-x-0 bottom-[calc(var(--nav-h)+var(--safe-b))] z-30 border-t border-line bg-surface/95 backdrop-blur px-4 py-2.5 flex gap-2">
+          <Button variant="secondary" size="lg" onClick={goNext}>Skip</Button>
           <SaveCallButton disabled={!form.outcome} loading={saving} onClick={save} label={form.outcome ? `Save · ${outcomeLabel(form.outcome)}` : 'Pick an outcome'} className={cn('flex-1')} />
         </div>
       )}

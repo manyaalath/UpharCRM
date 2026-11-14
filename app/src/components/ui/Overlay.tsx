@@ -6,7 +6,8 @@ import { X } from 'lucide-react';
 import { Button } from './Button';
 import { cn } from './cn';
 
-function useEscape(open: boolean, onClose: () => void) {
+// Escape closes; page scroll is locked while an overlay is open.
+export function useOverlay(open: boolean, onClose: () => void) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -31,51 +32,67 @@ export function Drawer({
 }: {
   open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode; width?: string;
 }) {
-  useEscape(open, onClose);
+  useOverlay(open, onClose);
   if (!open) return null;
   return (
     <Portal>
       <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true">
-        <div className="absolute inset-0 bg-ink/25 animate-[fade_150ms_ease-out]" onClick={onClose} />
-        <aside className={cn('absolute right-0 top-0 h-full w-full bg-surface border-l border-line flex flex-col shadow-[var(--shadow-pop)] animate-[slide_180ms_ease-out]', width)}>
-          <header className="flex items-start justify-between gap-3 px-5 py-4 border-b border-line">
-            <div className="min-w-0">
-              <h2 className="font-serif text-[20px] font-semibold text-ink leading-tight truncate">{title}</h2>
+        <div className="absolute inset-0 bg-ink/25 animate-fade-in" onClick={onClose} />
+        <aside className={cn('absolute right-0 top-0 h-full w-full bg-surface md:border-l border-line flex flex-col shadow-[var(--shadow-pop)] animate-slide-in', width)}>
+          <header className="flex items-start justify-between gap-3 pl-5 pr-3 pb-3.5 pt-[calc(var(--safe-t)+0.875rem)] border-b border-line">
+            <div className="min-w-0 pt-0.5">
+              <h2 className="font-serif text-[20px] font-semibold text-ink leading-tight">{title}</h2>
               {subtitle && <div className="mt-0.5 text-[12.5px] text-ink-2">{subtitle}</div>}
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1 shrink-0">
               {actions}
-              <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close"><X className="size-4" /></Button>
+              <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close"><X className="size-4.5" /></Button>
             </div>
           </header>
-          <div className="flex-1 overflow-y-auto">{children}</div>
+          <div className="flex-1 overflow-y-auto overscroll-contain pb-[var(--safe-b)]">{children}</div>
         </aside>
       </div>
-      <style>{`@keyframes fade{from{opacity:0}}@keyframes slide{from{transform:translateX(24px);opacity:.6}}`}</style>
     </Portal>
   );
 }
 
+// Centered dialog on desktop, bottom sheet on phones. The body scrolls; the footer stays put.
 export function Dialog({
   open, onClose, title, description, children, footer, className,
 }: {
   open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode; children?: ReactNode; footer?: ReactNode; className?: string;
 }) {
-  useEscape(open, onClose);
+  useOverlay(open, onClose);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { if (open) ref.current?.focus(); }, [open]);
   if (!open) return null;
   return (
     <Portal>
       <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-6" role="dialog" aria-modal="true">
-        <div className="absolute inset-0 bg-ink/30" onClick={onClose} />
-        <div ref={ref} tabIndex={-1} className={cn('relative w-full sm:max-w-md bg-surface border border-line rounded-t-lg sm:rounded-lg shadow-[var(--shadow-pop)] outline-none', className)}>
-          <div className="px-5 pt-5 pb-3">
-            <h2 className="text-[16px] font-semibold text-ink">{title}</h2>
-            {description && <p className="mt-1 text-[13px] text-ink-2">{description}</p>}
+        <div className="absolute inset-0 bg-ink/30 animate-fade-in" onClick={onClose} />
+        <div
+          ref={ref}
+          tabIndex={-1}
+          className={cn(
+            'relative flex w-full max-h-[92dvh] sm:max-h-[min(88dvh,720px)] flex-col sm:max-w-md bg-surface border border-line',
+            'rounded-t-xl sm:rounded-lg shadow-[var(--shadow-pop)] outline-none animate-sheet-up sm:animate-pop-in',
+            className
+          )}
+        >
+          <div className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-line-strong sm:hidden" aria-hidden />
+          <div className="flex items-start justify-between gap-3 pl-5 pr-3 pt-3 sm:pt-4 pb-3">
+            <div className="min-w-0 pt-1">
+              <h2 className="text-[16px] font-semibold text-ink">{title}</h2>
+              {description && <p className="mt-1 text-[13px] text-ink-2">{description}</p>}
+            </div>
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close" className="-mt-0.5"><X className="size-4.5" /></Button>
           </div>
-          {children && <div className="px-5 pb-4">{children}</div>}
-          {footer && <div className="flex justify-end gap-2 px-5 py-3 border-t border-line bg-sunken/50 rounded-b-lg">{footer}</div>}
+          {children && <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-4">{children}</div>}
+          {footer && (
+            <div className="flex shrink-0 justify-end gap-2 px-5 pt-3 pb-[calc(var(--safe-b)+0.75rem)] sm:pb-3 border-t border-line [&>*]:flex-1 sm:[&>*]:flex-none">
+              {footer}
+            </div>
+          )}
         </div>
       </div>
     </Portal>

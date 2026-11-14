@@ -66,12 +66,12 @@ export default function Sidebar({
                       title={collapsed ? item.label : undefined}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
-                        'relative flex items-center gap-2.5 h-8 rounded-md text-[13.5px] transition-colors',
+                        'relative flex items-center gap-2.5 h-9 rounded-md text-[13.5px] transition-colors',
                         collapsed ? 'justify-center' : 'px-2.5',
                         active ? 'bg-sunken text-ink font-medium' : 'text-ink-2 hover:bg-sunken/70 hover:text-ink'
                       )}
                     >
-                      {active && <span className="absolute -left-2.5 top-1.5 bottom-1.5 w-[2px] rounded-r bg-accent" aria-hidden />}
+                      {active && <span className="absolute -left-2.5 top-2 bottom-2 w-[2px] rounded-r bg-accent" aria-hidden />}
                       <Icon className={cn('size-4 shrink-0', active ? 'text-ink' : 'text-ink-3')} />
                       {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
                       {badge > 0 && (

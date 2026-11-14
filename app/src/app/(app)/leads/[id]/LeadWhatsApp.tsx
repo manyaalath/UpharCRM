@@ -74,7 +74,7 @@ export default function LeadWhatsApp({ leadId, onChange }: { leadId: string; onC
             </div>
 
             {data?.can_simulate && hasOutbound && reply === 'awaiting' && (
-              <div className="mt-3 rounded-md border border-dashed border-line-strong p-3">
+              <div className="mt-3 border-t border-dashed border-line-strong pt-3">
                 <p className="text-[12px] text-ink-3 mb-2">Test tool — simulate the customer&apos;s reply</p>
                 <div className="flex gap-2">
                   <Button size="sm" className="flex-1" loading={simulating === 'received'} disabled={!!simulating} onClick={() => simulate('received')}>

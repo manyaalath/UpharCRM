@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ChevronDown, Sparkles } from 'lucide-react';
-import { Badge, Button, cn, type Tone } from '@/components/ui';
+import { Badge, Button, Callout, cn, type Tone } from '@/components/ui';
 import { formatDateTime } from '@/lib/date';
 
 interface AiSummaryData {
@@ -50,12 +50,12 @@ export default function LeadAiSummary({ leadId }: { leadId: string }) {
   };
 
   return (
-    <div className="border-t border-line">
-      <div className="flex items-center justify-between gap-2 px-4 h-11">
+    <div className="border-t border-line first:border-t-0">
+      <div className="flex items-center justify-between gap-2 pl-4 pr-3 min-h-12">
         <button
           type="button"
           onClick={() => setOpen(o => !o)}
-          className="flex items-center gap-1.5 text-[13px] font-semibold text-ink"
+          className="flex items-center gap-1.5 h-10 text-[12.5px] font-semibold text-ink-2"
           aria-expanded={open}
         >
           <Sparkles className="size-3.5 text-ink-3" />
@@ -79,7 +79,7 @@ export default function LeadAiSummary({ leadId }: { leadId: string }) {
           )}
 
           {!loading && !error && !data && (
-            <p className="text-[12.5px] text-ink-3">Summarises visits, calls and complaints and suggests the next step.</p>
+            <p className="text-[12.5px] text-ink-3">Summarises visits, calls and complaints and suggests the next step. Machine-written — check before acting.</p>
           )}
 
           {data && (
@@ -92,10 +92,10 @@ export default function LeadAiSummary({ leadId }: { leadId: string }) {
                 <Badge tone={PRIORITY_TONE[data.priority_level?.toLowerCase()] || 'neutral'}>{data.priority_level} priority</Badge>
               </div>
 
-              <div className="rounded-md bg-sunken px-3 py-2.5">
-                <p className="text-[11.5px] font-medium text-ink-3">Next step</p>
+              <Callout tone="accent">
+                <p className="text-[11.5px] font-medium text-ink-3">Suggested next step</p>
                 <p className="mt-0.5 text-[13px] font-medium text-ink">{data.next_best_action}</p>
-              </div>
+              </Callout>
 
               {data.recommendations?.length > 0 && (
                 <ul className="space-y-1 text-[12.5px] text-ink-2 list-disc pl-4 marker:text-ink-3">

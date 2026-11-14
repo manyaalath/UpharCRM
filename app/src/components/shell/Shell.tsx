@@ -7,6 +7,7 @@ import type { Role } from '@/lib/auth';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
 import CommandPalette from './CommandPalette';
+import InstallBanner from '@/components/pwa/InstallBanner';
 
 export interface ShellUser {
   name: string;
@@ -66,7 +67,7 @@ export default function Shell({ user, pendingCount, children }: { user: ShellUse
         <header className="hidden md:flex sticky top-0 z-30 h-14 items-center gap-4 px-8 bg-paper/90 backdrop-blur border-b border-line">
           <button
             onClick={() => setPaletteOpen(true)}
-            className="flex items-center gap-2.5 w-full max-w-[420px] h-8.5 px-3 rounded-md border border-line-strong bg-surface text-[13px] text-ink-3 hover:border-ink-3 transition-colors"
+            className="flex items-center gap-2.5 w-full max-w-[420px] h-9 px-3 rounded-md border border-line-strong bg-surface text-[13px] text-ink-3 hover:border-ink-3 transition-colors"
           >
             <Search className="size-4" />
             <span className="flex-1 text-left truncate">Search leads, phone, challan…</span>
@@ -77,6 +78,7 @@ export default function Shell({ user, pendingCount, children }: { user: ShellUse
           </button>
         </header>
 
+        <InstallBanner />
         <main className="flex-1 flex flex-col min-w-0">{children}</main>
       </div>
 

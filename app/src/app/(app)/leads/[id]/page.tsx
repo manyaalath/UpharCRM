@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
+import { nextOpenFollowUp } from '@/lib/followups';
 import LeadDetailClient from './LeadDetailClient';
 import type { LeadRow } from '../_components/leadFields';
 
@@ -18,5 +19,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   if (error) throw new Error(`Could not load lead: ${error.message}`);
   if (!lead) notFound();
 
-  return <LeadDetailClient lead={lead as LeadRow} />;
+  const next_followup_date = await nextOpenFollowUp(supabase, id);
+  return <LeadDetailClient lead={{ ...(lead as LeadRow), next_followup_date }} />;
 }

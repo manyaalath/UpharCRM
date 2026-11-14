@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 import { ArrowRight, Download, FileSpreadsheet, RotateCcw, Upload } from 'lucide-react';
-import { Badge, Button, EmptyState, Panel, PanelHeader, Select, Stat, StatStrip, buttonClass, cn } from '@/components/ui';
+import { Badge, Button, Chip, EmptyState, Panel, PanelHeader, Select, Stat, StatStrip, Tabs, buttonClass, cn } from '@/components/ui';
 import type { ImportValidationResult } from '@/lib/types';
 import { downloadFromApi } from '@/lib/download';
 import { formatDate } from '@/lib/date';
@@ -188,7 +188,7 @@ export default function BulkImportLeads() {
             onDragLeave={() => setDragging(false)}
             onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); }}
             className={cn(
-              'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-14 text-center cursor-pointer transition-colors',
+              'flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-10 sm:py-14 text-center cursor-pointer transition-colors',
               dragging ? 'border-accent bg-accent-soft/50' : 'border-line-strong bg-surface hover:bg-sunken/50'
             )}
           >
@@ -205,7 +205,7 @@ export default function BulkImportLeads() {
               <div className="text-[14px] font-medium text-ink">{parsing ? `Checking ${filename}…` : 'Drop the Excel file here, or click to choose'}</div>
               <div className="mt-1 text-[12.5px] text-ink-3">.xlsx, .xls or .csv · up to 5000 rows</div>
             </div>
-            {parsing && <div className="h-1 w-40 overflow-hidden rounded-full bg-sunken"><div className="h-full w-1/3 bg-accent animate-[progress_1s_ease-in-out_infinite]" /></div>}
+            {parsing && <div className="h-1 w-40 overflow-hidden rounded-full bg-sunken"><div className="h-full w-1/3 bg-accent animate-progress" /></div>}
             {uploadError && <p className="max-w-md rounded-md bg-bad-soft px-3 py-2 text-[13px] text-bad">{uploadError}</p>}
           </label>
 
@@ -224,7 +224,6 @@ export default function BulkImportLeads() {
               </a>
             </div>
           </Panel>
-          <style>{`@keyframes progress{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}`}</style>
         </div>
       )}
 
@@ -234,7 +233,7 @@ export default function BulkImportLeads() {
             <div className="text-[13px] text-ink-2">
               <span className="font-medium text-ink">{filename}</span> · {results.length} rows checked
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:items-center">
               <Button variant="ghost" onClick={reset} icon={<RotateCcw className="size-3.5" />}>Choose another file</Button>
               <Button variant="primary" onClick={handleCommit} loading={committing} disabled={unresolved > 0 || toCommit === 0}>
                 {unresolved > 0 ? `Resolve ${unresolved} duplicate${unresolved > 1 ? 's' : ''} first` : `Import ${toCommit} row${toCommit === 1 ? '' : 's'}`}
@@ -243,28 +242,18 @@ export default function BulkImportLeads() {
             </div>
           </div>
 
-          <Panel>
-            <div role="tablist" className="flex gap-1 border-b border-line px-2">
-              {([
-                ['duplicates', 'Possible duplicates', counts.duplicates],
-                ['errors', 'Errors', counts.errors],
-                ['new', 'New leads', counts.new],
-              ] as const).map(([id, label, n]) => (
-                <button
-                  key={id}
-                  role="tab"
-                  aria-selected={bucket === id}
-                  onClick={() => setBucket(id)}
-                  className={cn(
-                    'relative h-11 px-3 text-[13px] font-medium transition-colors',
-                    bucket === id ? 'text-ink after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:bg-accent' : 'text-ink-2 hover:text-ink'
-                  )}
-                >
-                  {label}
-                  <span className={cn('ml-1.5 font-mono text-[12px]', id === 'errors' && n ? 'text-bad' : id === 'duplicates' && n ? 'text-warn' : 'text-ink-3')}>{n}</span>
-                </button>
-              ))}
-            </div>
+          <Panel className="overflow-hidden">
+            <Tabs<Bucket>
+              label="Rows by result"
+              className="px-4"
+              value={bucket}
+              onChange={setBucket}
+              items={[
+                { value: 'duplicates', label: 'Possible duplicates', count: counts.duplicates, countTone: 'warn' },
+                { value: 'errors', label: 'Errors', count: counts.errors, countTone: 'bad' },
+                { value: 'new', label: 'New leads', count: counts.new },
+              ]}
+            />
 
             {bucket === 'duplicates' && (
               counts.duplicates === 0 ? (
@@ -274,16 +263,11 @@ export default function BulkImportLeads() {
                   {dupGroups.length > 0 && (
                     <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-sunken/50 border-b border-line text-[12.5px] text-ink-2">
                       <span>{dupGroups.length} contact{dupGroups.length > 1 ? 's' : ''} match existing leads · {unresolved} need a decision</span>
-                      <div className="flex items-center gap-2">
-                        <span>Apply to all:</span>
-                        <div className="w-44">
-                          <Select defaultValue="" onChange={e => { if (e.target.value) applyToAll(e.target.value as Action); e.target.value = ''; }} className="h-7.5 text-[12.5px]">
-                            <option value="">Choose…</option>
-                            <option value="attach_to_lead">Attach to existing</option>
-                            <option value="create_new">Create as new</option>
-                            <option value="skip">Skip</option>
-                          </Select>
-                        </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="mr-0.5">Set all to</span>
+                        <Chip onClick={() => applyToAll('attach_to_lead')}>Attach to existing</Chip>
+                        <Chip onClick={() => applyToAll('create_new')}>Create as new</Chip>
+                        <Chip onClick={() => applyToAll('skip')}>Skip</Chip>
                       </div>
                     </div>
                   )}
@@ -293,7 +277,8 @@ export default function BulkImportLeads() {
                   {repeatedLines.length > 0 && (
                     <div className="border-t border-line">
                       <div className="px-4 pt-3 pb-1 text-[12.5px] font-medium text-ink-2">Repeated lines (same phone, date and book) — skipped unless you keep them</div>
-                      <table className="data-table">
+                      <div className="overflow-x-auto">
+                      <table className="data-table min-w-[640px]">
                         <thead><tr><th>Row</th><th>Contact</th><th>Phone</th><th>Visit</th><th>Book</th><th className="w-40">Action</th></tr></thead>
                         <tbody>
                           {repeatedLines.map(r => (
@@ -304,7 +289,7 @@ export default function BulkImportLeads() {
                               <td>{formatDate(r.row.visitDate)}</td>
                               <td>{r.row.bookTitle}</td>
                               <td>
-                                <Select value={r.action || 'skip'} onChange={e => setLineAction(r.row.rowIndex, e.target.value as Action)} className="h-7.5 text-[12.5px]">
+                                <Select scale="sm" aria-label={`Action for row ${r.row.rowIndex}`} value={r.action || 'skip'} onChange={e => setLineAction(r.row.rowIndex, e.target.value as Action)}>
                                   <option value="skip">Skip</option>
                                   <option value="create_new">Keep line</option>
                                 </Select>
@@ -313,6 +298,7 @@ export default function BulkImportLeads() {
                           ))}
                         </tbody>
                       </table>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -430,7 +416,7 @@ function Stepper({ step }: { step: Step }) {
   const steps: Array<[Step, string]> = [['upload', 'Upload'], ['review', 'Review'], ['done', 'Done']];
   const current = steps.findIndex(([s]) => s === step);
   return (
-    <ol className="flex items-center gap-2 text-[13px]">
+    <ol className="flex items-center gap-2 text-[13px] overflow-x-auto no-scrollbar">
       {steps.map(([s, label], i) => (
         <li key={s} className="flex items-center gap-2">
           <span
@@ -442,7 +428,7 @@ function Stepper({ step }: { step: Step }) {
             {i + 1}
           </span>
           <span className={cn(i === current ? 'font-medium text-ink' : 'text-ink-3')}>{label}</span>
-          {i < steps.length - 1 && <span className="mx-1 h-px w-8 bg-line-strong" aria-hidden />}
+          {i < steps.length - 1 && <span className="mx-1 h-px w-5 sm:w-8 bg-line-strong" aria-hidden />}
         </li>
       ))}
     </ol>
@@ -458,19 +444,19 @@ function DuplicateGroup({ group, onAction }: { group: ImportValidationResult[]; 
   return (
     <li className="px-4 py-4">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge tone={match.tone} dot>{match.label}</Badge>
           <span className="text-[12.5px] text-ink-3">Row{group.length > 1 ? 's' : ''} {group.map(r => r.row.rowIndex).join(', ')}</span>
         </div>
-        <div className="w-56">
+        <div className="w-full sm:w-64">
           <Select
             value={first.action || ''}
             onChange={e => onAction(e.target.value as Action)}
             aria-label="Action for this contact"
             aria-invalid={!first.action}
-            className="h-8"
+            placeholder="Choose what to do…"
+            searchable={false}
           >
-            {!first.action && <option value="">Choose what to do…</option>}
             <option value="attach_to_lead">Attach as new visit to {lead?.lead_seq_id}</option>
             <option value="create_new">Create as a new lead</option>
             <option value="skip">Skip {group.length > 1 ? 'these rows' : 'this row'}</option>
@@ -478,8 +464,10 @@ function DuplicateGroup({ group, onAction }: { group: ImportValidationResult[]; 
         </div>
       </div>
 
-      <div className="grid gap-px overflow-hidden rounded-md border border-line bg-line md:grid-cols-2">
+      {/* Side by side, no boxes: a hairline between the two columns is enough. */}
+      <div className="grid gap-y-4 md:grid-cols-2 md:divide-x md:divide-line">
         <Compare
+          className="md:pr-5"
           heading="In this file"
           rows={[
             ['Contact', first.row.leadName],
@@ -491,7 +479,8 @@ function DuplicateGroup({ group, onAction }: { group: ImportValidationResult[]; 
           ]}
         />
         <Compare
-          heading={<>Existing lead <span className="font-mono font-normal text-ink-2">{lead?.lead_seq_id}</span></>}
+          className="md:pl-5"
+          heading={<>Existing lead <span className="font-mono font-normal normal-case tracking-normal text-ink-2">{lead?.lead_seq_id}</span></>}
           rows={[
             ['Contact', lead?.contactName || '—'],
             ['Phone', <span key="p" className="font-mono">{lead?.phone || '—'}</span>],
@@ -506,11 +495,11 @@ function DuplicateGroup({ group, onAction }: { group: ImportValidationResult[]; 
   );
 }
 
-function Compare({ heading, rows }: { heading: React.ReactNode; rows: Array<[string, React.ReactNode]> }) {
+function Compare({ heading, rows, className }: { heading: React.ReactNode; rows: Array<[string, React.ReactNode]>; className?: string }) {
   return (
-    <div className="bg-surface">
-      <div className="px-3 py-2 text-[12px] font-semibold text-ink-2 bg-sunken/60 border-b border-line">{heading}</div>
-      <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1 px-3 py-2.5 text-[13px]">
+    <div className={className}>
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3">{heading}</div>
+      <dl className="grid grid-cols-[84px_1fr] gap-x-3 gap-y-1 text-[13px]">
         {rows.map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="text-ink-3">{k}</dt>

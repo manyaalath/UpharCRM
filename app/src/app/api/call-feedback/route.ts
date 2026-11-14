@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { getRequestSession } from '@/lib/session';
 import { todayIST } from '@/lib/date';
+import { OPEN_FOLLOWUP_STATUSES, nextOpenFollowUp } from '@/lib/followups';
 
 const OUTCOME_LABELS: Record<string, string> = {
   not_reachable: 'Not Reachable',
@@ -38,6 +39,8 @@ export async function GET(request: Request) {
 // POST — log a call. Optional:
 //   followup_id        → that follow-up is marked completed
 //   next_followup_date → a new pending follow-up is scheduled (YYYY-MM-DD, today or later)
+// Without a followup_id (a call logged from the lead page), every follow-up that was
+// due today or earlier is closed: the call it asked for has just been made.
 export async function POST(request: Request) {
   const supabase = await createClient();
   const session = await getRequestSession(request);
@@ -108,6 +111,14 @@ export async function POST(request: Request) {
       .eq('id', body.followup_id)
       .eq('lead_id', body.lead_id);
     if (fuError) console.error('Failed to complete follow-up', fuError);
+  } else {
+    const { error: dueError } = await supabase
+      .from('follow_ups')
+      .update({ status: 'completed', remarks: remarks ? `${outcomeLabel}: ${remarks}` : outcomeLabel })
+      .eq('lead_id', body.lead_id)
+      .in('status', OPEN_FOLLOWUP_STATUSES)
+      .lte('followup_date', today);
+    if (dueError) console.error('Failed to complete due follow-ups', dueError);
   }
 
   // Schedule the next one.
@@ -141,7 +152,8 @@ export async function POST(request: Request) {
   if (body.call_outcome === 'interested' || body.call_outcome === 'wants_more_specimens') leadUpdate.status = 'interested';
   else if (body.call_outcome === 'not_interested') leadUpdate.status = 'not_interested';
   else if (lead.status === 'new') leadUpdate.status = 'contacted';
-  if (body.followup_id || nextDate) leadUpdate.next_followup_date = nextDate;
+  // Read it back from the queue rather than assuming: other follow-ups may still be open.
+  leadUpdate.next_followup_date = await nextOpenFollowUp(supabase, body.lead_id);
 
   await supabase.from('leads').update(leadUpdate).eq('id', body.lead_id);
 

@@ -5,11 +5,12 @@ import { istDayBoundsUTC } from '@/lib/date';
 const LEAD_SELECT =
   '*, institute_contacts!inner(id, contacts(name, mobile_no), institutes!inner(name, village_town, locality, locations!inner(district))), agents(name), challans(count)';
 
-const SORTS: Record<string, { column: string; ascending: boolean }> = {
+// "Longest without contact" puts never-contacted leads first — they are the stalest.
+const SORTS: Record<string, { column: string; ascending: boolean; nullsFirst?: boolean }> = {
   newest: { column: 'created_at', ascending: false },
   oldest: { column: 'created_at', ascending: true },
   last_contact: { column: 'last_contact_date', ascending: false },
-  stale: { column: 'last_contact_date', ascending: true },
+  stale: { column: 'last_contact_date', ascending: true, nullsFirst: true },
 };
 
 // Escape characters that have meaning inside PostgREST or() / ilike patterns.
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
     let query = supabase
       .from('leads')
       .select(LEAD_SELECT, { count: 'exact' })
-      .order(sort.column, { ascending: sort.ascending, nullsFirst: false })
+      .order(sort.column, { ascending: sort.ascending, nullsFirst: sort.nullsFirst ?? false })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
