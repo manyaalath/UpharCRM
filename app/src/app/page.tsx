@@ -71,7 +71,7 @@ const DETAILS = [
 
 function Wordmark({ className = '' }: { className?: string }) {
   return (
-    <span className={`flex items-baseline gap-2 ${className}`}>
+    <span className={`flex items-baseline gap-2 whitespace-nowrap ${className}`}>
       <span className="font-deva text-[21px] font-bold text-ink leading-none">उपहार प्रकाशन</span>
       <span className="text-[10.5px] font-semibold tracking-[0.1em] text-ink-3">CRM</span>
     </span>
@@ -158,7 +158,10 @@ export default function LandingPage() {
             <a href="#install" className="hover:text-ink">Install</a>
           </nav>
           <div className="flex items-center gap-1.5">
-            <Link href="/login?mode=request" className={buttonClass('ghost', 'md', 'hidden sm:inline-flex')}>Request access</Link>
+            {/* Wrapper carries the breakpoint: the button's own display class would win over `hidden`. */}
+            <span className="hidden sm:block">
+              <Link href="/login?mode=request" className={buttonClass('ghost', 'md')}>Request access</Link>
+            </span>
             <LinkButton href="/login" variant="primary">Sign in</LinkButton>
           </div>
         </div>
@@ -168,7 +171,7 @@ export default function LandingPage() {
         {/* Hero */}
         <section className="relative overflow-hidden border-b border-line">
           <div className="pointer-events-none absolute inset-0 ledger-rules" aria-hidden />
-          <div className="pointer-events-none absolute -right-10 -top-24 select-none font-deva text-[420px] font-bold leading-none text-ink/[0.035] sm:text-[560px]" aria-hidden>उ</div>
+          <div className="pointer-events-none absolute -right-6 -top-10 select-none font-deva text-[300px] font-bold leading-none text-ink/[0.03] sm:text-[440px]" aria-hidden>उ</div>
 
           <div className="relative mx-auto grid max-w-[1180px] items-center gap-12 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:px-8 lg:py-24">
             <div className="animate-rise">

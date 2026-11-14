@@ -147,7 +147,7 @@ export default function LeadsClient({ agents }: { agents: string[] }) {
     <Page wide>
       <PageHeader
         title="Leads"
-        description={loading && !leads.length ? 'Loading…' : `${total.toLocaleString('en-IN')} ${chips.length ? 'matching' : 'in total'}`}
+        description={loading && !leads.length ? 'Loading…' : error ? 'Could not load' : `${total.toLocaleString('en-IN')} ${chips.length ? 'matching' : 'in total'}`}
         actions={
           <Button icon={<Download className="size-3.5" />} onClick={exportLeads}>Export</Button>
         }
@@ -180,7 +180,7 @@ export default function LeadsClient({ agents }: { agents: string[] }) {
           </Select>
           <DateRange
             label="Date added"
-            className="col-span-2 lg:col-span-1"
+            className="col-span-2 order-last lg:order-none lg:col-span-1"
             from={filters.from}
             to={filters.to}
             onFrom={v => setParams({ from: v || null })}

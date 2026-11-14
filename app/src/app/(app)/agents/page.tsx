@@ -23,14 +23,15 @@ async function loadAgents(): Promise<Representative[]> {
 export default function RepresentativesPage() {
   const [agents, setAgents] = useState<Representative[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState('');
 
   const fetchAgents = () =>
     loadAgents()
-      .then(setAgents)
-      .catch(e => toast.error(e instanceof Error && e.message ? e.message : 'Could not load representatives'))
+      .then(list => { setAgents(list); setLoadError(null); })
+      .catch(e => setLoadError(e instanceof Error && e.message ? e.message : 'Could not load representatives'))
       .finally(() => setLoading(false));
 
   useEffect(() => { fetchAgents(); }, []);
@@ -73,7 +74,7 @@ export default function RepresentativesPage() {
       <Panel className="overflow-hidden">
         <PanelHeader
           title="All representatives"
-          meta={loading ? undefined : `${agents.filter(a => a.is_active).length} active`}
+          meta={loading || loadError ? undefined : `${agents.filter(a => a.is_active).length} active`}
         />
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center px-3 sm:px-4 py-3 border-b border-line">
@@ -102,6 +103,12 @@ export default function RepresentativesPage() {
           <div className="p-4 flex flex-col gap-3">
             {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-7 w-full" />)}
           </div>
+        ) : loadError && agents.length === 0 ? (
+          <EmptyState
+            title="Representatives didn’t load"
+            description={loadError}
+            action={<Button onClick={() => { setLoading(true); fetchAgents(); }}>Try again</Button>}
+          />
         ) : rows.length === 0 ? (
           <EmptyState
             icon={<UserRound />}

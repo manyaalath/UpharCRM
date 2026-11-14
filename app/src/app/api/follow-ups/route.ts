@@ -97,6 +97,8 @@ async function queueCounts(supabase: SupabaseClient, today: string) {
     supabase.from('follow_ups').select('id', head).gt('followup_date', today).in('status', OPEN_STATUSES),
     supabase.from('follow_ups').select('id', head).eq('status', 'completed').gte('updated_at', start),
   ]);
+  const failed = [overdue, dueToday, upcoming, completedToday].find(r => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
   return {
     overdue: overdue.count || 0,
     due_today: dueToday.count || 0,
@@ -153,7 +155,11 @@ export async function GET(request: Request) {
 
   // ?counts=1 — numbers for the tabs only.
   if (searchParams.get('counts')) {
-    return NextResponse.json({ counts: await queueCounts(supabase, today) });
+    try {
+      return NextResponse.json({ counts: await queueCounts(supabase, today) });
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not load counts' }, { status: 500 });
+    }
   }
 
   // ?detail=<lead_id> — call-mode context for one lead.

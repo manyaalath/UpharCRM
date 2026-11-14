@@ -20,6 +20,7 @@ type SortKey = 'title' | 'copies' | 'created_at';
 export default function BooksPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [adding, setAdding] = useState(false);
@@ -41,8 +42,9 @@ export default function BooksPage() {
           const data = await res.json();
           if (!res.ok) throw new Error(data.error);
           setBooks(data.data || []);
+          setLoadError(null);
         })
-        .catch(() => toast.error('Could not load the catalogue'))
+        .catch(e => setLoadError(e instanceof Error && e.message ? e.message : 'Could not load the catalogue'))
         .finally(() => setLoading(false)),
     []
   );
@@ -173,7 +175,7 @@ export default function BooksPage() {
     <Page>
       <PageHeader
         title="Book catalogue"
-        description={loading ? 'Loading…' : `${books.length} titles · ${totalCopies.toLocaleString('en-IN')} specimen copies distributed`}
+        description={loading ? 'Loading…' : loadError && !books.length ? 'Could not load' : `${books.length} titles · ${totalCopies.toLocaleString('en-IN')} specimen copies distributed`}
         actions={
           <>
             <Button onClick={() => setPasteOpen(true)} icon={<ClipboardPaste className="size-4" />}>Paste a list</Button>
@@ -206,6 +208,12 @@ export default function BooksPage() {
           <div className="p-4 space-y-2.5">
             {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-6" />)}
           </div>
+        ) : loadError && books.length === 0 ? (
+          <EmptyState
+            title="The catalogue didn’t load"
+            description={loadError}
+            action={<Button onClick={() => { setLoading(true); loadBooks(); }}>Try again</Button>}
+          />
         ) : visible.length === 0 ? (
           <EmptyState
             title={search ? `No titles match “${search}”` : 'The catalogue is empty'}

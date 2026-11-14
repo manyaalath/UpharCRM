@@ -540,15 +540,15 @@ function MostVisited({ institutions, teachers }: { institutions: Analytics['top_
 function DashboardSkeleton() {
   return (
     <div className="flex flex-col gap-5" aria-busy="true" aria-label="Loading overview">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-line border border-line rounded-lg overflow-hidden">
+      <StatStrip cols={5}>
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-surface px-4 py-3.5">
+          <div key={i} className="px-4 py-3.5">
             <Skeleton className="h-3 w-20" />
             <Skeleton className="h-6 w-16 mt-2.5" />
             <Skeleton className="h-3 w-28 mt-2.5" />
           </div>
         ))}
-      </div>
+      </StatStrip>
       <div className="grid gap-5 lg:grid-cols-[1fr_1.25fr]">
         <Panel className="p-4 space-y-3">
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}

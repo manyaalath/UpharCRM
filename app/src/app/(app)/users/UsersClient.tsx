@@ -54,6 +54,7 @@ export default function UsersClient({ selfId, initialTab }: { selfId: string | n
   const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<AccountStatus>(
     TABS.some(t => t.id === initialTab) ? (initialTab as AccountStatus) : 'pending'
   );
@@ -66,8 +67,8 @@ export default function UsersClient({ selfId, initialTab }: { selfId: string | n
   const load = useCallback(
     () =>
       fetchAccounts()
-        .then(setAccounts)
-        .catch(e => toast.error(e instanceof Error && e.message ? e.message : 'Could not load accounts'))
+        .then(list => { setAccounts(list); setLoadError(null); })
+        .catch(e => setLoadError(e instanceof Error && e.message ? e.message : 'Could not load accounts'))
         .finally(() => setLoading(false)),
     []
   );
@@ -132,7 +133,7 @@ export default function UsersClient({ selfId, initialTab }: { selfId: string | n
         className="mb-3"
         value={tab}
         onChange={selectTab}
-        items={TABS.map(t => ({ value: t.id, label: t.label, count: loading ? null : counts[t.id], countTone: t.id === 'pending' ? 'accent' as const : undefined }))}
+        items={TABS.map(t => ({ value: t.id, label: t.label, count: loading || loadError ? null : counts[t.id], countTone: t.id === 'pending' ? 'accent' as const : undefined }))}
       />
 
       <Panel className="overflow-hidden">
@@ -152,6 +153,12 @@ export default function UsersClient({ selfId, initialTab }: { selfId: string | n
           <div className="p-4 flex flex-col gap-3">
             {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
           </div>
+        ) : loadError && accounts.length === 0 ? (
+          <EmptyState
+            title="Accounts didn’t load"
+            description={loadError}
+            action={<Button onClick={() => { setLoading(true); load(); }}>Try again</Button>}
+          />
         ) : rows.length === 0 ? (
           <EmptyState
             icon={<ShieldCheck />}
