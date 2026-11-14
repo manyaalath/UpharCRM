@@ -4,7 +4,7 @@ import { one } from '@/app/api/dashboard/analytics';
 import RecordsClient, { type RecordFilters, type RecordRow } from './RecordsClient';
 
 export const metadata = {
-  title: 'Challans · Uphar CRM',
+  title: 'Challans',
   description: 'Every specimen challan, filterable by district, rep, book and date.',
 };
 

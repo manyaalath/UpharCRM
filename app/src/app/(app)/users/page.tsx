@@ -1,7 +1,7 @@
 import { requireSession } from '@/lib/session';
 import UsersClient from './UsersClient';
 
-export const metadata = { title: 'Users & access · Uphar CRM' };
+export const metadata = { title: 'Users & access' };
 
 export default async function UsersPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const session = await requireSession(['admin']);

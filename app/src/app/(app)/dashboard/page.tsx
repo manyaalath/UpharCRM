@@ -2,7 +2,7 @@ import DashboardClient from './DashboardClient';
 import { RANGES, type RangeKey } from './ranges';
 
 export const metadata = {
-  title: 'Overview · Uphar CRM',
+  title: 'Overview',
   description: 'Specimen distribution at a glance: challans, leads, books, districts and reps.',
 };
 

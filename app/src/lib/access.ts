@@ -78,6 +78,10 @@ export function isPublicPath(pathname: string): boolean {
     pathname === '/' ||
     matches(pathname, '/login') ||
     pathname === '/no-access' ||
+    // PWA plumbing: must load without a session, or installing and offline mode break.
+    pathname === '/offline' ||
+    pathname === '/manifest.webmanifest' ||
+    pathname === '/sw.js' ||
     pathname === '/api/auth/login' ||
     pathname === '/api/auth/register' ||
     pathname === '/api/auth/logout' ||

@@ -4,7 +4,7 @@ import { nextOpenFollowUp } from '@/lib/followups';
 import LeadDetailClient from './LeadDetailClient';
 import type { LeadRow } from '../_components/leadFields';
 
-export const metadata = { title: 'Lead · Uphar CRM' };
+export const metadata = { title: 'Lead' };
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
