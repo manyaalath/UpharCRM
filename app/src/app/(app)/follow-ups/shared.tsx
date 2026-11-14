@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { BookOpen, History, MessageSquareText } from 'lucide-react';
-import { Badge, Button, Skeleton, Textarea, cn, type Tone } from '@/components/ui';
+import { Badge, Button, Callout, Chip, Skeleton, Textarea, cn, type Tone } from '@/components/ui';
 import { CALL_OUTCOME_OPTIONS, type CallOutcome } from '@/lib/types';
 import { addDaysIST, formatDate, formatDateTime, relativeDay, todayIST } from '@/lib/date';
 
@@ -163,9 +163,9 @@ export function LeadContextPanel({ leadId, remarks, className }: { leadId: strin
           <MessageSquareText className="size-3.5" /> Previous calls
         </h3>
         {remarks && (
-          <p className="mb-2 text-[13px] text-ink-2 bg-sunken rounded-md px-2.5 py-2">
+          <Callout className="mb-3">
             <span className="text-ink-3">Follow-up note: </span>{remarks}
-          </p>
+          </Callout>
         )}
         {loading ? (
           <Skeleton className="h-4 w-2/3" />
@@ -283,8 +283,8 @@ export function CallForm({
                 onClick={() => pick(o.value)}
                 aria-pressed={active}
                 className={cn(
-                  'flex items-center gap-2 min-h-11 md:min-h-10 px-3 rounded-md border text-left text-[13px] transition-colors',
-                  active ? 'border-accent bg-accent-soft text-ink font-medium' : 'border-line-strong bg-surface text-ink-2 hover:bg-sunken'
+                  'flex items-center gap-2 min-h-11 md:min-h-10 px-3 py-1.5 rounded-md border text-left text-[13.5px] md:text-[13px] leading-tight transition-colors',
+                  active ? 'border-accent bg-accent-soft text-ink font-medium' : 'border-line-strong bg-surface text-ink-2 hover:bg-sunken hover:text-ink'
                 )}
               >
                 {showKeys && (
@@ -302,25 +302,10 @@ export function CallForm({
       <fieldset>
         <legend className="text-[12.5px] font-medium text-ink-2 mb-2">Next follow-up</legend>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onChange({ ...value, nextDate: '' })}
-            className={cn('h-9 px-3 rounded-md border text-[12.5px]', value.nextDate === '' ? 'border-ink bg-ink text-white' : 'border-line-strong text-ink-2 hover:bg-sunken')}
-          >
-            None
-          </button>
+          <Chip selected={value.nextDate === ''} onClick={() => onChange({ ...value, nextDate: '' })}>None</Chip>
           {QUICK_DATES.map(q => {
             const d = addDaysIST(q.days, today);
-            return (
-              <button
-                key={q.days}
-                type="button"
-                onClick={() => onChange({ ...value, nextDate: d })}
-                className={cn('h-9 px-3 rounded-md border text-[12.5px]', value.nextDate === d ? 'border-ink bg-ink text-white' : 'border-line-strong text-ink-2 hover:bg-sunken')}
-              >
-                {q.label}
-              </button>
-            );
+            return <Chip key={q.days} selected={value.nextDate === d} onClick={() => onChange({ ...value, nextDate: d })}>{q.label}</Chip>;
           })}
           <input
             type="date"
@@ -328,11 +313,15 @@ export function CallForm({
             value={value.nextDate}
             onChange={e => onChange({ ...value, nextDate: e.target.value })}
             aria-label="Next follow-up date"
-            className="h-9 px-2.5 rounded-md border border-line-strong bg-surface text-[13px] text-ink font-mono focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+            className="h-9 md:h-8 min-w-0 px-2.5 rounded-md border border-line-strong bg-surface text-[16px] md:text-[12.5px] md:font-mono text-ink hover:border-ink-3 focus:outline-none focus-visible:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
           />
         </div>
         <p className="mt-1.5 text-[12px] text-ink-3">
-          {value.nextDate ? `Next call ${relativeDay(value.nextDate).toLowerCase()} · ${formatDate(value.nextDate)}` : 'No further follow-up will be scheduled.'}
+          {value.nextDate && value.nextDate < today
+            ? <span className="text-bad">That date has passed — pick today or later.</span>
+            : value.nextDate
+              ? `Next call ${relativeDay(value.nextDate).toLowerCase()} · ${formatDate(value.nextDate)}`
+              : 'No further follow-up will be scheduled.'}
         </p>
       </fieldset>
 

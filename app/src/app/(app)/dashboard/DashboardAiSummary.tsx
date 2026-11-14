@@ -50,7 +50,7 @@ export default function DashboardAiSummary({ query }: { query: string }) {
 
   return (
     <Panel>
-      <div className="flex items-center justify-between gap-3 px-4 h-11">
+      <div className="flex items-center justify-between gap-3 px-4 min-h-12 py-1.5">
         <button
           onClick={() => setOpen(o => !o)}
           className="flex items-center gap-2 min-w-0 text-left"
@@ -58,8 +58,8 @@ export default function DashboardAiSummary({ query }: { query: string }) {
           disabled={!data && !error}
         >
           <Sparkles className="size-4 text-ink-3 shrink-0" aria-hidden />
-          <span className="text-[13.5px] font-semibold text-ink">AI summary</span>
-          <span className="text-[12px] text-ink-3 truncate">
+          <span className="text-[13.5px] font-semibold text-ink whitespace-nowrap">AI summary</span>
+          <span className="hidden sm:inline text-[12px] text-ink-3 truncate">
             {generatedAt ? `Generated ${formatDateTime(generatedAt)} · machine-written, check before acting` : 'Written by AI from the numbers on this page'}
           </span>
           {(data || error) && <ChevronDown className={cn('size-4 text-ink-3 transition-transform', open && 'rotate-180')} />}

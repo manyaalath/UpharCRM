@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Download, FileText, Plus, Search, X } from 'lucide-react';
 import {
-  Button, EmptyState, Input, LeadStatusBadge, LinkButton, Page, PageHeader, Panel, Select, cn,
+  Button, DateRange, EmptyState, Input, LeadStatusBadge, LinkButton, Page, PageHeader, Panel, Select, cn,
 } from '@/components/ui';
 import { ALL_DISTRICTS } from '@/lib/constants';
 import { formatDate } from '@/lib/date';
@@ -122,10 +122,11 @@ export default function RecordsClient({ rows, total, page, pageSize, filters, ag
       />
 
       {/* Filters — one row on desktop */}
-      <div className="grid grid-cols-2 md:grid-cols-[minmax(180px,1.2fr)_repeat(3,minmax(140px,1fr))_auto] gap-2 mb-3">
-        <div className="col-span-2 md:col-span-1">
+      <div className="grid grid-cols-2 lg:grid-cols-[minmax(160px,1.1fr)_repeat(3,minmax(0,1fr))_minmax(250px,1.4fr)] gap-2 mb-3">
+        <div className="col-span-2 lg:col-span-1">
           <Input
             leading={<Search />}
+            type="search"
             placeholder="Challan no."
             value={q}
             onChange={e => setQ(e.target.value)}
@@ -140,15 +141,20 @@ export default function RecordsClient({ rows, total, page, pageSize, filters, ag
           <option value="">All reps</option>
           {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </Select>
-        <Select value={filters.book} onChange={e => apply({ book: e.target.value })} aria-label="Book" className="col-span-2 md:col-span-1">
-          <option value="">All books</option>
-          {books.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
-        </Select>
-        <div className="col-span-2 md:col-span-1 flex items-center gap-1.5">
-          <Input type="date" value={filters.from} max={filters.to || undefined} onChange={e => apply({ from: e.target.value })} aria-label="From date" className="md:w-[140px]" />
-          <span className="text-ink-3 text-[12px]">to</span>
-          <Input type="date" value={filters.to} min={filters.from || undefined} onChange={e => apply({ to: e.target.value })} aria-label="To date" className="md:w-[140px]" />
+        <div className="col-span-2 lg:col-span-1">
+          <Select value={filters.book} onChange={e => apply({ book: e.target.value })} aria-label="Book">
+            <option value="">All books</option>
+            {books.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+          </Select>
         </div>
+        <DateRange
+          label="Challan date"
+          className="col-span-2 lg:col-span-1"
+          from={filters.from}
+          to={filters.to}
+          onFrom={v => apply({ from: v })}
+          onTo={v => apply({ to: v })}
+        />
       </div>
 
       {chips.length > 0 && (
@@ -157,7 +163,7 @@ export default function RecordsClient({ rows, total, page, pageSize, filters, ag
             <button
               key={c.key}
               onClick={() => removeChip(c.key)}
-              className="inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-sm bg-surface border border-line-strong text-[12px] text-ink-2 hover:text-ink hover:border-ink-3"
+              className="inline-flex items-center gap-1 h-8 md:h-6.5 pl-2.5 pr-1.5 rounded-md bg-accent-soft text-[12.5px] text-ink hover:brightness-95"
             >
               {c.label}
               <X className="size-3" aria-label="Remove filter" />
@@ -165,7 +171,7 @@ export default function RecordsClient({ rows, total, page, pageSize, filters, ag
           ))}
           <button
             onClick={() => { setQ(''); apply({ q: '', challan: '', district: '', rep: '', book: '', from: '', to: '' }); }}
-            className="text-[12px] text-accent hover:underline underline-offset-2 ml-1"
+            className="h-8 md:h-auto text-[12.5px] font-medium text-accent hover:underline underline-offset-2 ml-1"
           >
             Clear all
           </button>
@@ -183,7 +189,37 @@ export default function RecordsClient({ rows, total, page, pageSize, filters, ag
             action={canCreate && !chips.length ? <LinkButton href="/de" variant="primary">Enter a challan</LinkButton> : undefined}
           />
         ) : (
-          <div className="overflow-x-auto max-h-[calc(100dvh-280px)]">
+          <>
+          {/* Phones: one challan per row. */}
+          <ul className="md:hidden divide-y divide-line">
+            {rows.map(r => {
+              const copies = r.books.reduce((s, b) => s + b.quantity, 0);
+              const highlighted = !!filters.challan && r.challan_no === filters.challan;
+              return (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/leads/${r.lead_id}`)}
+                    className={cn('block w-full px-4 py-3 text-left active:bg-sunken', highlighted && 'bg-accent-soft')}
+                  >
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className="font-mono text-[13px] font-medium text-ink">{r.challan_no}</span>
+                      <span className="shrink-0 text-[12px] text-ink-3">{formatDate(r.challan_date)}</span>
+                    </span>
+                    <span className="mt-0.5 block text-[14px] text-ink truncate">{r.contact || '—'}</span>
+                    <span className="block text-[12.5px] text-ink-2 truncate">{[r.institute, r.district].filter(Boolean).join(' · ') || '—'}</span>
+                    <span className="mt-1 flex items-center justify-between gap-3 text-[12px] text-ink-3">
+                      <span className="truncate">
+                        {r.books.length ? `${copies} ${copies === 1 ? 'copy' : 'copies'} · ${r.books[0].title}${r.books.length > 1 ? ` +${r.books.length - 1}` : ''}` : 'No books'}
+                      </span>
+                      <span className="shrink-0">{r.rep || ''}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="hidden md:block overflow-x-auto max-h-[calc(100dvh-280px)]">
             <table className="data-table min-w-[900px]">
               <thead>
                 <tr>
@@ -236,15 +272,16 @@ export default function RecordsClient({ rows, total, page, pageSize, filters, ag
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {total > 0 && (
-          <div className="flex items-center justify-between gap-3 px-4 h-11 border-t border-line text-[12.5px] text-ink-2">
+          <div className="flex items-center justify-between gap-3 pl-4 pr-2 min-h-12 border-t border-line text-[12.5px] text-ink-2">
             <span className="tabular">
               {first.toLocaleString('en-IN')}–{last.toLocaleString('en-IN')} of {total.toLocaleString('en-IN')}
             </span>
             <div className="flex items-center gap-1">
-              <span className="mr-2 text-ink-3 tabular">Page {page} of {pages}</span>
+              <span className="mr-1 text-ink-3 tabular whitespace-nowrap">Page {page} of {pages}</span>
               <Button size="icon" variant="ghost" aria-label="Previous page" disabled={page <= 1 || pending} onClick={() => apply({ page: page - 1 })}>
                 <ChevronLeft className="size-4" />
               </Button>

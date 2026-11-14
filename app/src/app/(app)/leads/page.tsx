@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import LeadsClient from './LeadsClient';
 
 export const metadata = {
-  title: 'Leads · Uphar CRM',
+  title: 'Leads',
   description: 'Teachers, shopkeepers and institutes that received specimens',
 };
 

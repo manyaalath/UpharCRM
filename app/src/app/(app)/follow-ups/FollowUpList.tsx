@@ -3,9 +3,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { CalendarClock, Check, PhoneCall, Search } from 'lucide-react';
+import { CalendarClock, Check, Phone, PhoneCall, Search } from 'lucide-react';
 import {
-  Button, Dialog, Drawer, EmptyState, Input, Panel, Select, Skeleton, cn,
+  Button, Chip, Dialog, Drawer, EmptyState, Input, Panel, Select, Skeleton, buttonClass, cn,
 } from '@/components/ui';
 import { addDaysIST, formatDate, formatDateTime, relativeDay, todayIST } from '@/lib/date';
 import {
@@ -182,21 +182,21 @@ export default function FollowUpList({ tab, counts, onChanged }: { tab: Tab; cou
 
   // ── Filters bar ──
   const filterBar = (
-    <div className="flex flex-col sm:flex-row gap-2 sm:items-center px-3 py-2.5 border-b border-line">
-      <div className="sm:w-72">
-        <Input leading={<Search />} placeholder="Search name, institute, phone, lead ID" value={search} onChange={e => setSearch(e.target.value)} aria-label="Search follow-ups" />
+    <div className="flex flex-col lg:flex-row gap-2 lg:items-center px-3 sm:px-4 py-3 border-b border-line">
+      <div className="lg:w-72">
+        <Input leading={<Search />} type="search" placeholder="Name, institute, phone or lead ID" value={search} onChange={e => setSearch(e.target.value)} aria-label="Search follow-ups" />
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:flex">
-        <Select value={district} onChange={e => setDistrict(e.target.value)} aria-label="District" className="sm:w-44">
+      <div className="grid grid-cols-2 gap-2 lg:w-[360px]">
+        <Select value={district} onChange={e => setDistrict(e.target.value)} aria-label="District">
           <option value="">All districts</option>
           {districts.map(d => <option key={d} value={d}>{d}</option>)}
         </Select>
-        <Select value={rep} onChange={e => setRep(e.target.value)} aria-label="Representative" className="sm:w-44">
+        <Select value={rep} onChange={e => setRep(e.target.value)} aria-label="Representative">
           <option value="">All reps</option>
           {reps.map(r => <option key={r} value={r}>{r}</option>)}
         </Select>
       </div>
-      <div className="flex items-center gap-2 sm:ml-auto text-[12px] text-ink-3">
+      <div className="flex items-center gap-2 lg:ml-auto text-[12px] text-ink-3">
         {filtersActive && (
           <Button size="sm" variant="ghost" onClick={() => { setSearch(''); setDistrict(''); setRep(''); }}>Clear filters</Button>
         )}
@@ -228,7 +228,7 @@ export default function FollowUpList({ tab, counts, onChanged }: { tab: Tab; cou
     <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
       <Button size="sm" variant="secondary" onClick={() => setCallTarget(r)} icon={<PhoneCall className="size-3.5" />}>Log call</Button>
       <Button size="sm" variant="ghost" onClick={() => setRescheduleTarget(r)} aria-label="Reschedule" title="Reschedule"><CalendarClock className="size-3.5" /></Button>
-      <Button size="sm" variant="ghost" onClick={() => markDone(r)} loading={busyId === r.id} aria-label="Mark done" title="Mark done"><Check className="size-3.5" /></Button>
+      <Button size="sm" variant="ghost" onClick={() => markDone(r)} loading={busyId === r.id} aria-label="Mark done" title="Mark done without logging a call">{busyId !== r.id && <Check className="size-3.5" />}</Button>
     </div>
   );
 
@@ -276,7 +276,7 @@ export default function FollowUpList({ tab, counts, onChanged }: { tab: Tab; cou
             {/* Mobile */}
             <ul className="md:hidden divide-y divide-line">
               {filtered.map(r => (
-                <li key={r.id} className="px-4 py-3" onClick={() => router.push(`/leads/${r.lead_id}`)}>
+                <li key={r.id} className="px-4 py-3 active:bg-sunken" onClick={() => router.push(`/leads/${r.lead_id}`)}>
                   <div className="flex items-start justify-between gap-3">
                     <ContactCell row={r} />
                     {r.last_outcome && <OutcomeBadge value={r.last_outcome} />}
@@ -338,15 +338,21 @@ export default function FollowUpList({ tab, counts, onChanged }: { tab: Tab; cou
                   </h3>
                   <ul className="divide-y divide-line">
                     {grouped[g.id].map(r => (
-                      <li key={r.id} className="px-4 py-3" onClick={() => router.push(`/leads/${r.lead_id}`)}>
+                      <li key={r.id} className="px-4 py-3 active:bg-sunken" onClick={() => router.push(`/leads/${r.lead_id}`)}>
                         <div className="flex items-start justify-between gap-3">
                           <ContactCell row={r} />
                           <span className={cn('shrink-0 text-[12px]', g.id === 'overdue' ? 'text-bad font-medium' : 'text-ink-2')}>{relativeDay(r.followup_date)}</span>
                         </div>
-                        <div className="mt-2 flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                          <PhoneLink phone={r.mobile_no} />
-                          <Button size="sm" variant="secondary" className="ml-auto min-h-9" onClick={() => setCallTarget(r)} icon={<PhoneCall className="size-3.5" />}>Log call</Button>
-                          <Button size="sm" variant="ghost" className="min-h-9" onClick={() => setRescheduleTarget(r)} aria-label="Reschedule"><CalendarClock className="size-4" /></Button>
+                        <p className="mt-0.5 text-[12px] text-ink-3 truncate">{[r.district, r.rep_name && `Rep: ${r.rep_name}`].filter(Boolean).join(' · ')}</p>
+                        <div className="mt-2 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                          {r.mobile_no && (
+                            <a href={`tel:${r.mobile_no}`} className={buttonClass('secondary', 'sm', 'font-mono')}>
+                              <Phone className="size-3.5 text-ink-3" />{formatPhone(r.mobile_no)}
+                            </a>
+                          )}
+                          <Button size="sm" variant="primary" className="ml-auto" onClick={() => setCallTarget(r)}>Log call</Button>
+                          <Button size="icon" variant="ghost" className="size-9" onClick={() => setRescheduleTarget(r)} aria-label="Reschedule"><CalendarClock className="size-4" /></Button>
+                          <Button size="icon" variant="ghost" className="size-9" onClick={() => markDone(r)} loading={busyId === r.id} aria-label="Mark done">{busyId !== r.id && <Check className="size-4" />}</Button>
                         </div>
                       </li>
                     ))}
@@ -359,7 +365,7 @@ export default function FollowUpList({ tab, counts, onChanged }: { tab: Tab; cou
 
         {rows.length < total && (
           <div className="flex justify-center px-4 py-3 border-t border-line">
-            <Button onClick={loadMore} loading={loadingMore}>Load {Math.min(PAGE_SIZE, total - rows.length)} more</Button>
+            <Button className="w-full sm:w-auto" onClick={loadMore} loading={loadingMore}>Load {Math.min(PAGE_SIZE, total - rows.length)} more</Button>
           </div>
         )}
       </Panel>
@@ -423,19 +429,19 @@ function LogCallDrawer({ row, onClose, onLogged }: { row: FollowUpRow | null; on
     >
       {row && (
         <div className="flex flex-col">
-          <div className="px-5 py-4 border-b border-line flex items-center gap-2">
+          <div className="px-4 sm:px-5 py-4 border-b border-line flex items-center gap-3">
             {row.mobile_no && (
-              <a href={`tel:${row.mobile_no}`} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-accent text-white text-[13px] font-medium hover:bg-accent-hover">
+              <a href={`tel:${row.mobile_no}`} className={buttonClass('primary', 'md')}>
                 <PhoneCall className="size-3.5" /> <span className="font-mono">{formatPhone(row.mobile_no)}</span>
               </a>
             )}
             <span className="text-[12.5px] text-ink-3">Due {relativeDay(row.followup_date).toLowerCase()}</span>
           </div>
-          <div className="px-5 py-5 border-b border-line">
+          <div className="px-4 sm:px-5 py-5 border-b border-line">
             <CallForm value={form} onChange={setForm} />
-            <SaveCallButton className="mt-4 w-full" disabled={!form.outcome} loading={saving} onClick={save} />
+            <SaveCallButton className="mt-4 w-full" disabled={!form.outcome} loading={saving} onClick={save} label={form.outcome ? 'Save call' : 'Pick an outcome'} />
           </div>
-          <div className="px-5 py-5">
+          <div className="px-4 sm:px-5 py-5">
             <LeadContextPanel leadId={row.lead_id} remarks={row.remarks} />
           </div>
         </div>
@@ -473,21 +479,12 @@ function RescheduleDialog({
     >
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
-          {[['Tomorrow', 1], ['+2 days', 2], ['+1 week', 7], ['+2 weeks', 14]].map(([label, days]) => {
-            const d = addDaysIST(days as number, today);
-            return (
-              <button
-                key={label}
-                type="button"
-                onClick={() => setDate(d)}
-                className={cn('h-8 px-3 rounded-md border text-[12.5px]', date === d ? 'border-ink bg-ink text-white' : 'border-line-strong text-ink-2 hover:bg-sunken')}
-              >
-                {label}
-              </button>
-            );
+          {([['Tomorrow', 1], ['+2 days', 2], ['+1 week', 7], ['+2 weeks', 14]] as const).map(([label, days]) => {
+            const d = addDaysIST(days, today);
+            return <Chip key={label} selected={date === d} onClick={() => setDate(d)}>{label}</Chip>;
           })}
         </div>
-        <Input type="date" min={today} value={date} onChange={e => setDate(e.target.value)} aria-label="New date" className="font-mono" />
+        <Input type="date" min={today} value={date} onChange={e => setDate(e.target.value)} aria-label="New date" />
         <Input placeholder="Reason (optional)" value={remarks} onChange={e => setRemarks(e.target.value)} aria-label="Reason" />
       </div>
     </Dialog>

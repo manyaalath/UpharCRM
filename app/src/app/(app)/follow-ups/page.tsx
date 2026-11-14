@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import FollowUpsClient from './FollowUpsClient';
 
 export const metadata: Metadata = {
-  title: 'Follow-ups · Uphar CRM',
+  title: 'Follow-ups',
   description: 'Call queue and follow-up schedule for specimen leads',
 };
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CalendarPlus, Copy, MessageCircle, Phone } from 'lucide-react';
+import { CalendarPlus, Copy, MessageCircle, Phone, PhoneCall } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, buttonClass, LeadStatusBadge } from '@/components/ui';
 import { LEAD_TYPE_OPTIONS } from '@/lib/types';
@@ -59,19 +59,17 @@ export function PhoneActions({ mobile }: { mobile: string }) {
   };
   return (
     <div className="flex items-center gap-1.5">
-      <a href={`tel:${mobile}`} className="font-mono text-[15px] font-medium text-ink tabular hover:text-accent mr-1">
+      <a href={`tel:${mobile}`} className={buttonClass('secondary', 'md', 'font-mono tabular')} title="Call this number">
+        <Phone className="size-3.5 text-ink-3" />
         {formatMobile(mobile)}
-      </a>
-      <a href={`tel:${mobile}`} className={buttonClass('secondary', 'icon')} aria-label="Call" title="Call">
-        <Phone className="size-3.5" />
       </a>
       {wa && (
         <a href={wa} target="_blank" rel="noreferrer" className={buttonClass('secondary', 'icon')} aria-label="Open in WhatsApp" title="WhatsApp">
-          <MessageCircle className="size-3.5" />
+          <MessageCircle className="size-4" />
         </a>
       )}
-      <Button variant="ghost" size="icon" onClick={copy} aria-label="Copy number" title="Copy">
-        <Copy className="size-3.5" />
+      <Button variant="ghost" size="icon" onClick={copy} aria-label="Copy number" title="Copy number">
+        <Copy className="size-4" />
       </Button>
     </div>
   );
@@ -95,9 +93,9 @@ export function LeadFacts({ view }: { view: LeadView }) {
   return (
     <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
       {rows.map(([k, v]) => (
-        <div key={k} className={k === 'Address' ? 'col-span-2' : undefined}>
+        <div key={k} className={k === 'Address' ? 'col-span-2' : 'min-w-0'}>
           <dt className="text-[11.5px] text-ink-3">{k}</dt>
-          <dd className="text-[13px] text-ink truncate">{v}</dd>
+          <dd className={k === 'Address' ? 'text-[13px] text-ink break-words' : 'text-[13px] text-ink truncate'}>{v}</dd>
         </div>
       ))}
     </dl>
@@ -108,7 +106,7 @@ export function BooksGiven({ books, loading }: { books: TimelineResponse['books'
   if (loading && !books) return <p className="text-[12.5px] text-ink-3">Loading…</p>;
   if (!books?.length) return <p className="text-[12.5px] text-ink-3">No specimens recorded.</p>;
   return (
-    <ul className="divide-y divide-line">
+    <ul className="divide-y divide-line -my-1.5">
       {books.map(b => (
         <li key={b.id} className="flex items-baseline justify-between gap-3 py-1.5">
           <span className="text-[13px] text-ink min-w-0 truncate">{b.title}</span>
@@ -130,10 +128,10 @@ export function LeadActionBar({
   const [fuOpen, setFuOpen] = useState(false);
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" icon={<Phone className="size-3.5" />} onClick={() => setCallOpen(true)}>Log call</Button>
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+        <Button variant="primary" icon={<PhoneCall className="size-3.5" />} onClick={() => setCallOpen(true)}>Log call</Button>
         <Button icon={<CalendarPlus className="size-3.5" />} onClick={() => setFuOpen(true)}>Follow-up</Button>
-        <div className="ml-auto w-[170px]">
+        <div className="col-span-2 sm:w-[180px]">
           <LeadStatusSelect leadId={view.id} status={view.status} onChanged={onStatusChange} />
         </div>
       </div>

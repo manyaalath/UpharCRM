@@ -1,6 +1,8 @@
 import { requireSession } from '@/lib/session';
 import PortalHeader from './PortalHeader';
 
+export const metadata = { title: 'Challan entry' };
+
 export default async function DELayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession(['admin', 'manager', 'data_entry']);
 

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, Phone, RefreshCw } from 'lucide-react';
 import {
-  Button, EmptyState, Page, PageHeader, Panel, PanelHeader, Select, Skeleton, Stat, StatStrip, cn, leadStatusMeta,
+  Button, EmptyState, Page, PageHeader, Panel, PanelHeader, Segmented, Select, Skeleton, Stat, StatStrip, cn, leadStatusMeta,
   type Tone,
 } from '@/components/ui';
 import { ALL_DISTRICTS } from '@/lib/constants';
@@ -115,6 +115,15 @@ export default function DashboardClient({ initialRange, initialDistrict }: { ini
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [range, district, pathname, router]);
 
+  // Refresh when a challan is saved or a call is logged in another tab.
+  useEffect(() => {
+    try {
+      const bc = new BroadcastChannel('dashboard-refresh');
+      bc.onmessage = () => load();
+      return () => bc.close();
+    } catch { /* unsupported — polling below still runs */ }
+  }, [load]);
+
   // Light polling: every 5 min, only while the tab is visible.
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
@@ -156,29 +165,22 @@ export default function DashboardClient({ initialRange, initialDistrict }: { ini
         }
         actions={
           <>
-            <div role="group" aria-label="Date range" className="inline-flex h-8.5 rounded-md border border-line-strong bg-surface p-0.5">
-              {RANGES.map(r => (
-                <button
-                  key={r.key}
-                  onClick={() => setRange(r.key)}
-                  aria-pressed={range === r.key}
-                  className={cn(
-                    'px-2.5 rounded-[5px] text-[12.5px] font-medium transition-colors',
-                    range === r.key ? 'bg-ink text-white' : 'text-ink-2 hover:text-ink hover:bg-sunken'
-                  )}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
-            <div className="w-[170px]">
+            <Segmented<RangeKey>
+              label="Date range"
+              full
+              className="w-full sm:w-auto"
+              value={range}
+              onChange={setRange}
+              options={RANGES.map(r => ({ value: r.key, label: r.label }))}
+            />
+            <div className="min-w-0 flex-1 sm:w-[180px] sm:flex-none">
               <Select value={district} onChange={e => setDistrict(e.target.value)} aria-label="District">
                 <option value="">All districts</option>
                 {ALL_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
               </Select>
             </div>
             <Button onClick={exportAnalytics} icon={<Download className="size-4" />}>Export</Button>
-            <Button variant="ghost" onClick={load} disabled={loading} title={ago(updatedAt, now)} aria-label="Refresh">
+            <Button variant="ghost" onClick={load} disabled={loading} title={ago(updatedAt, now)} aria-label="Refresh" className="px-2.5">
               <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
               <span className="hidden xl:inline text-[12px] text-ink-3 font-normal">{ago(updatedAt, now)}</span>
             </Button>
@@ -299,7 +301,7 @@ function NeedsAttention({ data }: { data: Analytics }) {
           {items.map(item => {
             const late = item.followup_date < todayIST();
             return (
-              <li key={item.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-sunken/50">
+              <li key={item.id} className="flex items-center gap-3 pl-4 pr-2 py-2 hover:bg-sunken/50">
                 <Link href={`/leads/${item.lead_id}`} className="min-w-0 flex-1">
                   <div className="text-[13px] font-medium text-ink truncate">{item.contact_person || 'Unnamed contact'}</div>
                   <div className="text-[12px] text-ink-3 truncate">
@@ -312,7 +314,7 @@ function NeedsAttention({ data }: { data: Analytics }) {
                 {item.mobile_no && (
                   <a
                     href={`tel:${item.mobile_no}`}
-                    className="inline-flex items-center justify-center size-8 rounded-md text-ink-2 hover:bg-sunken hover:text-ink"
+                    className="inline-flex items-center justify-center size-10 md:size-8 rounded-md text-ink-2 hover:bg-sunken hover:text-ink"
                     aria-label={`Call ${item.contact_person || ''} ${item.mobile_no}`}
                     title={item.mobile_no}
                   >
@@ -325,7 +327,7 @@ function NeedsAttention({ data }: { data: Analytics }) {
         </ul>
       )}
       {total > items.length && (
-        <Link href="/follow-ups" className="mt-auto block border-t border-line px-4 py-2.5 text-[12.5px] text-ink-2 hover:text-ink">
+        <Link href="/follow-ups" className="mt-auto block border-t border-line px-4 py-3 md:py-2.5 text-[12.5px] text-ink-2 hover:text-ink">
           {nf(total - items.length)} more in the queue
         </Link>
       )}
@@ -504,19 +506,13 @@ function MostVisited({ institutions, teachers }: { institutions: Analytics['top_
       <PanelHeader
         title="Most visited"
         actions={
-          <div role="tablist" className="inline-flex gap-0.5">
-            {([['inst', 'Institutions'], ['teach', 'Teachers']] as const).map(([k, label]) => (
-              <button
-                key={k}
-                role="tab"
-                aria-selected={tab === k}
-                onClick={() => setTab(k)}
-                className={cn('h-7 px-2 rounded-md text-[12.5px] font-medium', tab === k ? 'bg-sunken text-ink' : 'text-ink-3 hover:text-ink')}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label="Most visited"
+            size="sm"
+            value={tab}
+            onChange={setTab}
+            options={[{ value: 'inst', label: 'Institutions' }, { value: 'teach', label: 'Teachers' }]}
+          />
         }
       />
       {list.length === 0 ? (
@@ -544,15 +540,15 @@ function MostVisited({ institutions, teachers }: { institutions: Analytics['top_
 function DashboardSkeleton() {
   return (
     <div className="flex flex-col gap-5" aria-busy="true" aria-label="Loading overview">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-line border border-line rounded-lg overflow-hidden">
+      <StatStrip cols={5}>
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-surface px-4 py-3.5">
+          <div key={i} className="px-4 py-3.5">
             <Skeleton className="h-3 w-20" />
             <Skeleton className="h-6 w-16 mt-2.5" />
             <Skeleton className="h-3 w-28 mt-2.5" />
           </div>
         ))}
-      </div>
+      </StatStrip>
       <div className="grid gap-5 lg:grid-cols-[1fr_1.25fr]">
         <Panel className="p-4 space-y-3">
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}

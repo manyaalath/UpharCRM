@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CircleAlert, RefreshCw } from 'lucide-react';
 import {
-  Badge, Button, EmptyState, LinkButton, Page, PageHeader, Panel, PanelHeader, Skeleton, Stat, StatStrip, type Tone,
+  Badge, Button, Callout, EmptyState, LinkButton, Page, PageHeader, Panel, PanelHeader, Skeleton, Stat, StatStrip, type Tone,
 } from '@/components/ui';
 import { formatDate, formatDateTime, todayIST } from '@/lib/date';
 
@@ -135,19 +135,16 @@ export default function DailyBriefClient() {
       </StatStrip>
 
       {error && (
-        <Panel className="mb-5">
-          <div className="flex items-start gap-3 px-4 py-3.5">
-            <CircleAlert className="size-4 mt-0.5 text-bad shrink-0" />
-            <div className="text-[13.5px]">
-              <p className="font-medium text-ink">{error.notConfigured ? 'AI is not configured' : 'The brief could not be generated'}</p>
-              <p className="mt-0.5 text-ink-2">
-                {error.notConfigured
-                  ? 'Add GROQ_API_KEY to the environment (local .env and Vercel project settings), then try again. The numbers above are still live.'
-                  : error.message}
-              </p>
-            </div>
-          </div>
-        </Panel>
+        <Callout
+          tone={error.notConfigured ? 'warn' : 'bad'}
+          icon={<CircleAlert />}
+          title={error.notConfigured ? 'AI is not configured' : 'The brief could not be generated'}
+          className="mb-5"
+        >
+          {error.notConfigured
+            ? 'Add GROQ_API_KEY to the environment (local .env and Vercel project settings), then try again. The numbers above are still live.'
+            : error.message}
+        </Callout>
       )}
 
       {loading && !data && (
@@ -173,7 +170,7 @@ export default function DailyBriefClient() {
         <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
           <Panel className="mb-5">
             <PanelHeader title="Morning briefing" meta="AI summary of today’s data" />
-            <p className="px-5 py-4 text-[15px] leading-relaxed text-ink max-w-[72ch]">{data.manager_briefing}</p>
+            <p className="px-4 sm:px-5 py-4 text-[15px] leading-relaxed text-ink max-w-[72ch]">{data.manager_briefing}</p>
           </Panel>
 
           <div className="grid gap-5 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] mb-5">
@@ -207,7 +204,7 @@ export default function DailyBriefClient() {
             <PanelHeader title="Rep workload" meta="Counts are live; status and notes are AI suggestions" />
             {data.reps_workload?.length ? (
               <div className="overflow-x-auto">
-                <table className="data-table">
+                <table className="data-table min-w-[560px]">
                   <thead>
                     <tr>
                       <th>Representative</th>

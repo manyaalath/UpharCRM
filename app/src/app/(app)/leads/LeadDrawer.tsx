@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowUpRight } from 'lucide-react';
-import { Drawer, LinkButton } from '@/components/ui';
+import { Drawer, LinkButton, PanelSection } from '@/components/ui';
 import LeadAiSummary from './[id]/LeadAiSummary';
 import { leadView, type LeadRow } from './_components/leadFields';
 import { BooksGiven, LeadActionBar, LeadFacts, LeadTitle, PhoneActions, useLeadTimeline } from './_components/LeadProfile';
@@ -18,6 +18,18 @@ export default function LeadDrawer({
 }) {
   const [current, setCurrent] = useState<LeadRow | null>(lead);
   useEffect(() => setCurrent(lead), [lead]);
+
+  // The list row is a summary. Pull the full record (address, alt phone, next follow-up) on open.
+  const leadId = lead?.id ?? null;
+  useEffect(() => {
+    if (!leadId) return;
+    const ac = new AbortController();
+    fetch(`/api/leads/${leadId}`, { signal: ac.signal })
+      .then(res => (res.ok ? res.json() : null))
+      .then(json => { if (json?.data) setCurrent(c => (c && c.id === leadId ? { ...c, ...json.data } : c)); })
+      .catch(() => { /* the summary row is still shown */ });
+    return () => ac.abort();
+  }, [leadId]);
 
   const timeline = useLeadTimeline(lead?.id ?? null);
   const { reload } = timeline;
@@ -56,7 +68,7 @@ export default function LeadDrawer({
         </LinkButton>
       }
     >
-      <div className="px-5 py-4 space-y-4 border-b border-line">
+      <div className="px-4 sm:px-5 py-4 space-y-4 border-b border-line">
         <PhoneActions mobile={view.mobile} />
         <LeadActionBar
           view={view}
@@ -69,29 +81,24 @@ export default function LeadDrawer({
         />
       </div>
 
-      <div className="px-5 py-4 border-b border-line">
-        <LeadFacts view={view} />
-      </div>
+      <div className="sm:px-1">
+        <PanelSection title="Details">
+          <LeadFacts view={view} />
+        </PanelSection>
 
-      <div className="px-5 py-4">
-        <h3 className="text-[12.5px] font-semibold text-ink-2 mb-1.5">
-          Books given
-          {timeline.data && timeline.data.totals.books > 0 && (
-            <span className="ml-1.5 font-mono font-normal text-ink-3">{timeline.data.totals.books}</span>
+        <PanelSection title="Books given" meta={timeline.data && timeline.data.totals.books > 0 ? timeline.data.totals.books : undefined}>
+          <BooksGiven books={timeline.data?.books} loading={timeline.loading} />
+        </PanelSection>
+
+        <LeadAiSummary key={view.id} leadId={view.id} />
+
+        <PanelSection title="History">
+          {timeline.error ? (
+            <p className="text-[12.5px] text-bad">{timeline.error}</p>
+          ) : (
+            <LeadTimeline items={timeline.data?.items ?? null} loading={timeline.loading} />
           )}
-        </h3>
-        <BooksGiven books={timeline.data?.books} loading={timeline.loading} />
-      </div>
-
-      <LeadAiSummary key={view.id} leadId={view.id} />
-
-      <div className="px-5 py-4 border-t border-line">
-        <h3 className="text-[12.5px] font-semibold text-ink-2 mb-3">History</h3>
-        {timeline.error ? (
-          <p className="text-[12.5px] text-bad">{timeline.error}</p>
-        ) : (
-          <LeadTimeline items={timeline.data?.items ?? null} loading={timeline.loading} />
-        )}
+        </PanelSection>
       </div>
     </Drawer>
   );

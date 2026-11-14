@@ -6,10 +6,10 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value);
 
-  // Root and login: send signed-in users straight to their product.
+  // Front page and login: signed-in users go straight to their desk.
+  // Signed-out visitors see the front page at "/".
   if (pathname === '/' || pathname === '/login') {
     if (session) return NextResponse.redirect(new URL(homeFor(session.role), request.url));
-    if (pathname === '/') return NextResponse.redirect(new URL('/login', request.url));
     return NextResponse.next();
   }
 

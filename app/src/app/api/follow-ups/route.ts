@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { istDayBoundsUTC, todayIST } from '@/lib/date';
+import { syncNextFollowUp } from '@/lib/followups';
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -96,6 +97,8 @@ async function queueCounts(supabase: SupabaseClient, today: string) {
     supabase.from('follow_ups').select('id', head).gt('followup_date', today).in('status', OPEN_STATUSES),
     supabase.from('follow_ups').select('id', head).eq('status', 'completed').gte('updated_at', start),
   ]);
+  const failed = [overdue, dueToday, upcoming, completedToday].find(r => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
   return {
     overdue: overdue.count || 0,
     due_today: dueToday.count || 0,
@@ -152,7 +155,11 @@ export async function GET(request: Request) {
 
   // ?counts=1 — numbers for the tabs only.
   if (searchParams.get('counts')) {
-    return NextResponse.json({ counts: await queueCounts(supabase, today) });
+    try {
+      return NextResponse.json({ counts: await queueCounts(supabase, today) });
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not load counts' }, { status: 500 });
+    }
   }
 
   // ?detail=<lead_id> — call-mode context for one lead.
@@ -210,12 +217,20 @@ export async function GET(request: Request) {
   });
 }
 
+const isIsoDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
 
   if (!body.lead_id || !body.followup_date) {
     return NextResponse.json({ error: 'lead_id and followup_date are required' }, { status: 422 });
+  }
+  if (!isIsoDate(body.followup_date)) {
+    return NextResponse.json({ error: 'followup_date must be YYYY-MM-DD' }, { status: 422 });
+  }
+  if (body.followup_date < todayIST()) {
+    return NextResponse.json({ error: 'Follow-up date cannot be in the past' }, { status: 422 });
   }
 
   let agentId = body.agent_id;
@@ -245,16 +260,20 @@ export async function POST(request: Request) {
     description: `Follow-up scheduled for ${body.followup_date}`,
     metadata: { followup_date: body.followup_date },
   }]);
+  await syncNextFollowUp(supabase, body.lead_id);
 
   return NextResponse.json(data, { status: 201 });
 }
 
 export async function PUT(request: Request) {
   const supabase = await createClient();
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
 
   if (!body.id) {
     return NextResponse.json({ error: 'Follow-up ID is required' }, { status: 422 });
+  }
+  if (body.followup_date && !isIsoDate(body.followup_date)) {
+    return NextResponse.json({ error: 'followup_date must be YYYY-MM-DD' }, { status: 422 });
   }
 
   const updates: Record<string, unknown> = {};
@@ -281,6 +300,9 @@ export async function PUT(request: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Completing or moving a follow-up changes what the lead shows as "next".
+  if (data?.lead_id) await syncNextFollowUp(supabase, data.lead_id);
 
   if (body.status && body.lead_id) {
     await supabase.from('lead_activities').insert([{

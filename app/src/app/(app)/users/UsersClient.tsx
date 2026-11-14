@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import {
-  Badge, Button, ConfirmDialog, EmptyState, Input, Page, PageHeader, Panel, Select, Skeleton, cn, type Tone,
+  Badge, Button, ConfirmDialog, EmptyState, Input, Page, PageHeader, Panel, Select, Skeleton, Tabs, type Tone,
 } from '@/components/ui';
 import { ROLE_LABELS } from '@/lib/access';
 import type { Role } from '@/lib/auth';
@@ -54,6 +54,7 @@ export default function UsersClient({ selfId, initialTab }: { selfId: string | n
   const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<AccountStatus>(
     TABS.some(t => t.id === initialTab) ? (initialTab as AccountStatus) : 'pending'
   );
@@ -66,8 +67,8 @@ export default function UsersClient({ selfId, initialTab }: { selfId: string | n
   const load = useCallback(
     () =>
       fetchAccounts()
-        .then(setAccounts)
-        .catch(e => toast.error(e instanceof Error && e.message ? e.message : 'Could not load accounts'))
+        .then(list => { setAccounts(list); setLoadError(null); })
+        .catch(e => setLoadError(e instanceof Error && e.message ? e.message : 'Could not load accounts'))
         .finally(() => setLoading(false)),
     []
   );
@@ -127,50 +128,46 @@ export default function UsersClient({ selfId, initialTab }: { selfId: string | n
         }
       />
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-        <div className="flex items-center gap-1 overflow-x-auto -mx-1 px-1" role="tablist">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              role="tab"
-              aria-selected={tab === t.id}
-              onClick={() => selectTab(t.id)}
-              className={cn(
-                'flex items-center gap-1.5 h-8 px-3 rounded-md text-[13px] whitespace-nowrap transition-colors',
-                tab === t.id ? 'bg-surface border border-line-strong text-ink font-medium' : 'text-ink-2 hover:bg-sunken'
-              )}
-            >
-              {t.label}
-              <span className={cn('font-mono text-[11.5px]', t.id === 'pending' && counts.pending > 0 ? 'text-accent' : 'text-ink-3')}>
-                {counts[t.id]}
-              </span>
-            </button>
-          ))}
-        </div>
-        <div className="sm:w-64">
-          <Input
-            leading={<Search />}
-            placeholder="Filter by name or email"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-          />
-        </div>
-      </div>
+      <Tabs<AccountStatus>
+        label="Account status"
+        className="mb-3"
+        value={tab}
+        onChange={selectTab}
+        items={TABS.map(t => ({ value: t.id, label: t.label, count: loading || loadError ? null : counts[t.id], countTone: t.id === 'pending' ? 'accent' as const : undefined }))}
+      />
 
       <Panel className="overflow-hidden">
+        <div className="px-3 sm:px-4 py-3 border-b border-line">
+          <div className="sm:w-72">
+            <Input
+              leading={<Search />}
+              type="search"
+              placeholder="Filter by name or email"
+              aria-label="Filter accounts by name or email"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+            />
+          </div>
+        </div>
         {loading ? (
           <div className="p-4 flex flex-col gap-3">
             {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
           </div>
+        ) : loadError && accounts.length === 0 ? (
+          <EmptyState
+            title="Accounts didn’t load"
+            description={loadError}
+            action={<Button onClick={() => { setLoading(true); load(); }}>Try again</Button>}
+          />
         ) : rows.length === 0 ? (
           <EmptyState
             icon={<ShieldCheck />}
-            title={tab === 'pending' ? 'No pending requests' : `No ${tab} accounts`}
-            description={tab === 'pending' ? 'New sign-ups from the login page will show up here.' : undefined}
+            title={query ? `No ${tab} account matches “${query}”` : tab === 'pending' ? 'No pending requests' : `No ${tab} accounts`}
+            description={!query && tab === 'pending' ? 'New sign-ups from the login page will show up here.' : undefined}
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="data-table">
+            <table className="data-table max-md:block max-md:[&_tbody]:block max-md:[&_thead]:hidden max-md:[&_tr]:grid max-md:[&_tr]:grid-cols-2 max-md:[&_tr]:gap-x-3 max-md:[&_tr]:gap-y-2 max-md:[&_tr]:items-center max-md:[&_tr]:px-4 max-md:[&_tr]:py-3 max-md:[&_tr]:border-b max-md:[&_tr]:border-line max-md:[&_tr:last-child]:border-b-0 max-md:[&_td]:!p-0 max-md:[&_td]:!border-0">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -188,8 +185,8 @@ export default function UsersClient({ selfId, initialTab }: { selfId: string | n
                   const chosenRole = approveRole[k] || (a.role === 'books' ? 'data_entry' : a.role);
                   return (
                     <tr key={k}>
-                      <td>
-                        <div className="font-medium text-ink">
+                      <td className="max-md:col-span-2">
+                        <div className="font-medium text-ink max-md:text-[14.5px]">
                           {a.name}
                           {isSelf && <span className="ml-2 text-[11.5px] font-normal text-ink-3">(you)</span>}
                         </div>
@@ -199,25 +196,27 @@ export default function UsersClient({ selfId, initialTab }: { selfId: string | n
                         {a.source === 'books' ? (
                           <span className="text-ink-2">Book catalogue</span>
                         ) : a.status === 'active' ? (
-                          <div className="w-40">
+                          <div className="md:w-40">
                             <Select
                               aria-label={`Role for ${a.name}`}
                               value={a.role}
                               disabled={isBusy || isSelf}
                               onChange={e => act(a, 'set_role', e.target.value as Role)}
-                              className="h-7.5 text-[12.5px]"
+                              scale="sm"
+                              searchable={false}
                             >
                               {STAFF_ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                             </Select>
                           </div>
                         ) : a.status === 'pending' || a.status === 'rejected' ? (
-                          <div className="w-40">
+                          <div className="md:w-40">
                             <Select
                               aria-label={`Role to grant ${a.name}`}
                               value={chosenRole}
                               disabled={isBusy}
                               onChange={e => setApproveRole(r => ({ ...r, [k]: e.target.value as Role }))}
-                              className="h-7.5 text-[12.5px]"
+                              scale="sm"
+                              searchable={false}
                             >
                               {STAFF_ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                             </Select>
@@ -226,8 +225,10 @@ export default function UsersClient({ selfId, initialTab }: { selfId: string | n
                           <span className="text-ink-2">{ROLE_LABELS[a.role]}</span>
                         )}
                       </td>
-                      <td><Badge tone={STATUS_TONE[a.status].tone} dot>{STATUS_TONE[a.status].label}</Badge></td>
-                      <td className="text-ink-2 whitespace-nowrap">{formatDate(a.created_at)}</td>
+                      <td className="max-md:justify-self-end"><Badge tone={STATUS_TONE[a.status].tone} dot>{STATUS_TONE[a.status].label}</Badge></td>
+                      <td className="text-ink-2 whitespace-nowrap max-md:text-[12px] max-md:text-ink-3">
+                        <span className="md:hidden">Requested </span>{formatDate(a.created_at)}
+                      </td>
                       <td>
                         <div className="flex justify-end gap-1.5">
                           {(a.status === 'pending' || a.status === 'rejected') && (

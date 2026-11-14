@@ -1,6 +1,8 @@
 import { requireSession } from '@/lib/session';
 import PortalHeader from '@/app/de/PortalHeader';
 
+export const metadata = { title: 'Book catalogue' };
+
 export default async function BooksLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession(['admin', 'books']);
 
