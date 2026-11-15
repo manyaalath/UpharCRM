@@ -1,13 +1,46 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono, Source_Serif_4, Mukta } from "next/font/google";
+import localFont from "next/font/local";
 import { Toaster } from "sonner";
 import PwaRegister from "@/components/pwa/PwaRegister";
 import "./globals.css";
 
-const plexSans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-plex-sans" });
-const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-plex-mono" });
-const sourceSerif = Source_Serif_4({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--font-source-serif" });
-const mukta = Mukta({ subsets: ["devanagari", "latin"], weight: ["500", "700"], variable: "--font-mukta" });
+// Self-hosted (woff2 from Fontsource, all SIL OFL). Fetching from Google at build
+// time broke Turbopack builds on Vercel, and local files also work offline in the PWA.
+const plexSans = localFont({
+  variable: "--font-plex-sans",
+  display: "swap",
+  src: [
+    { path: "./fonts/plex-sans-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/plex-sans-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/plex-sans-600.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/plex-sans-700.woff2", weight: "700", style: "normal" },
+  ],
+});
+const plexMono = localFont({
+  variable: "--font-plex-mono",
+  display: "swap",
+  src: [
+    { path: "./fonts/plex-mono-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/plex-mono-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/plex-mono-600.woff2", weight: "600", style: "normal" },
+  ],
+});
+const sourceSerif = localFont({
+  variable: "--font-source-serif",
+  display: "swap",
+  src: [
+    { path: "./fonts/source-serif-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/source-serif-600.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/source-serif-700.woff2", weight: "700", style: "normal" },
+  ],
+});
+// The Devanagari wordmark, bold only. Devanagari subset; Latin falls through to
+// IBM Plex Sans (see --font-deva in globals.css).
+const mukta = localFont({
+  variable: "--font-mukta",
+  display: "swap",
+  src: [{ path: "./fonts/mukta-700.woff2", weight: "700", style: "normal" }],
+});
 
 export const metadata: Metadata = {
   title: { default: "Uphar CRM", template: "%s · Uphar CRM" },
